@@ -19,9 +19,9 @@ var castCmd = &cobra.Command{
 	Run:   run,
 }
 
-var skipDirs = []string{"node_modules", ".git", "data", "build"}
+var defaultSkips = []string{"node_modules", ".git", "data", "build", ".next"}
+var skipDirs []string
 var showAll bool = false
-var castHelpMessage = ""
 
 func init() {
 	RootCmd.AddCommand(castCmd)
@@ -40,12 +40,6 @@ func init() {
 
 func run(cmd *cobra.Command, args []string) {
 	color.Cyan("Printing Files")
-	pwd, err := os.Getwd()
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	fmt.Println(pwd)
 
 	if len(args) == 0 {
 		walk(".", "")
@@ -92,6 +86,11 @@ func walk(targetPath string, prefix string) {
 }
 
 func shouldSkip(fileName string) bool {
+	for _, s := range defaultSkips {
+		if s == fileName {
+			return true
+		}
+	}
 	for _, s := range skipDirs {
 		if s == fileName {
 			return true
