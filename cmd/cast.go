@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -18,13 +19,27 @@ var castCmd = &cobra.Command{
 	Run:   run,
 }
 
-var skipDirs []string
+var skipDirs = []string{"node_modules", ".git", "data", "build"}
+var showAll bool = false
+var castHelpMessage = ""
 
 func init() {
 	RootCmd.AddCommand(castCmd)
+	castCmd.Flags().BoolVarP(&showAll, "all", "a", false,
+		"Ignore the skip list and show all files")
+
+	castCmd.Flags().StringSliceVarP(&skipDirs, "skip", "s", []string{
+		"node_modules",
+		".git",
+		"build",
+		"data",
+	},
+		"Comma-separated list of folders to skip",
+	)
 }
 
 func run(cmd *cobra.Command, args []string) {
+	color.Cyan("Printing Files")
 	pwd, err := os.Getwd()
 	if err != nil {
 		fmt.Println(err)
@@ -49,12 +64,16 @@ func walk(targetPath string, prefix string) {
 	}
 
 	for i, file := range dir {
+
+		if !showAll && shouldSkip(file.Name()) {
+			continue
+		}
 		isLast := i == len(dir)-1
 		pointer := ""
 		if isLast {
-			pointer = "|   "
+			pointer = "└── "
 		} else {
-			pointer = "-"
+			pointer = "├── "
 		}
 
 		path := filepath.Join(targetPath, file.Name())
@@ -62,8 +81,21 @@ func walk(targetPath string, prefix string) {
 		fmt.Println(prefix + pointer + file.Name())
 
 		if file.IsDir() {
-			walk(path, prefix+"└── ")
+			if isLast {
+				walk(path, prefix+"    ")
+			} else {
+				walk(path, prefix+"│   ")
+			}
 		}
 
 	}
+}
+
+func shouldSkip(fileName string) bool {
+	for _, s := range skipDirs {
+		if s == fileName {
+			return true
+		}
+	}
+	return false
 }
