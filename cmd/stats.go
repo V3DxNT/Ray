@@ -156,16 +156,40 @@ func analze(currentDir string) {
 			}()
 		} else {
 			extension := filepath.Ext(dirEntry.Name())
+			if extension == "" {
+				extension = "Binaries"
+			}
 			extCounts[extension]++
 			totalFiles++
 			fileName := dirEntry.Name()
 			currentFramework := detectedSubProjects[currentDir]
-			if fileName == "go.mod" {
+
+			switch fileName {
+			case "go.mod":
 				detectedSubProjects[currentDir] = "Go Lang"
-			} else if fileName == "next.config.js" || fileName == "next.config.ts" {
-				detectedSubProjects[currentDir] = "Next Js"
-			} else if fileName == "package.json" && currentFramework == "" {
-				detectedSubProjects[currentDir] = "Node Js"
+
+			case "next.config.js", "next.config.ts":
+				detectedSubProjects[currentDir] = "Next.js"
+
+			case "app.json", "metro.config.js":
+				detectedSubProjects[currentDir] = "React Native"
+
+			case "requirements.txt", "pyproject.toml", "Pipfile":
+				detectedSubProjects[currentDir] = "Python"
+
+			case "CMakeLists.txt":
+				detectedSubProjects[currentDir] = "C++"
+
+			case "pom.xml", "build.gradle":
+				detectedSubProjects[currentDir] = "Java"
+
+			case "schema.prisma":
+				detectedSubProjects[currentDir] = "Prisma DB"
+
+			case "package.json":
+				if currentFramework == "" {
+					detectedSubProjects[currentDir] = "Node.js"
+				}
 			}
 		}
 		totalEntries++
