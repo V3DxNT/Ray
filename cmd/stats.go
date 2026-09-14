@@ -92,13 +92,26 @@ func stat(cmd *cobra.Command, args []string) {
 		return statsList[i].Count > statsList[j].Count
 	})
 
-	for _, file := range statsList {
+	fmt.Println()
+	color.Cyan("╭──────────────────────────────────────╮")
+	fmt.Printf(color.CyanString("│")+" %-20s %-15d "+color.CyanString("│\n"), "Total", totalEntries)
+	fmt.Printf(color.CyanString("│")+" %-20s %-15d "+color.CyanString("│\n"), "Files", totalFiles)
+	fmt.Printf(color.CyanString("│")+" %-20s %-15d "+color.CyanString("│\n"), "Directories", totalDir)
+	color.Cyan("╰──────────────────────────────────────╯")
+	fmt.Println()
+
+	for i, file := range statsList {
+
+		if i == 10 {
+			break
+		}
+
 		name := file.Name
 		count := file.Count
 		pct := (float64(count) / float64(totalFiles)) * 100
 		filled := int((pct / 100) * 20)
 		bar := strings.Repeat("█", filled) + strings.Repeat("░", 20-filled)
-		fmt.Printf("%-10s %s %.1f%%\n", name, bar, pct)
+		fmt.Printf("%-10s %s %.1f%% : %d Files \n", name, bar, pct, count)
 	}
 }
 
