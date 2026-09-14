@@ -52,7 +52,7 @@ type SubProjects struct {
 	Framework string
 }
 
-var detectedSubProjects []SubProjects
+var detectedSubProjects map[string]string
 
 func init() {
 	statsCmd.Flags().StringSliceVarP(&skippedList, "skip", "s", []string{}, "skipped files")
@@ -64,6 +64,7 @@ func init() {
 func stat(cmd *cobra.Command, args []string) {
 
 	extCounts = make(map[string]int)
+	detectedSubProjects = make(map[string]string)
 
 	if len(args) > 1 {
 		color.Red("Too many arguments")
@@ -109,8 +110,8 @@ func stat(cmd *cobra.Command, args []string) {
 
 	if listFiles && len(detectedSubProjects) > 0 {
 		fmt.Println("\n" + color.GreenString("🎯 Detected Environments:"))
-		for _, proj := range detectedSubProjects {
-			fmt.Printf("  ├── %-30s [%s]\n", proj.Path, color.YellowString(proj.Framework))
+		for path, framwork := range detectedSubProjects {
+			fmt.Printf("  ├── %-30s [%s]\n", path, color.YellowString(framwork))
 		}
 
 	}
@@ -158,12 +159,13 @@ func analze(currentDir string) {
 			extCounts[extension]++
 			totalFiles++
 			fileName := dirEntry.Name()
+			currentFramework := detectedSubProjects[currentDir]
 			if fileName == "go.mod" {
-				detectedSubProjects = append(detectedSubProjects, SubProjects{Path: currentDir, Framework: "Go Module"})
+				detectedSubProjects[currentDir] = "Go Lang"
 			} else if fileName == "next.config.js" || fileName == "next.config.ts" {
-				detectedSubProjects = append(detectedSubProjects, SubProjects{Path: currentDir, Framework: "Next.js"})
-			} else if fileName == "package.json" {
-				detectedSubProjects = append(detectedSubProjects, SubProjects{Path: currentDir, Framework: "Node.js"})
+				detectedSubProjects[currentDir] = "Next Js"
+			} else if fileName == "package.json" && currentFramework == "" {
+				detectedSubProjects[currentDir] = "Node Js"
 			}
 		}
 		totalEntries++
