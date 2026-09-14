@@ -47,6 +47,13 @@ var defaultSkippedList []string = []string{
 	".git",
 }
 
+type SubProjects struct {
+	Path      string
+	Framework string
+}
+
+var detectedSubProjects []SubProjects
+
 func init() {
 	statsCmd.Flags().StringSliceVarP(&skippedList, "skip", "s", []string{}, "skipped files")
 
@@ -100,6 +107,14 @@ func stat(cmd *cobra.Command, args []string) {
 	color.Cyan("╰──────────────────────────────────────╯")
 	fmt.Println()
 
+	if listFiles && len(detectedSubProjects) > 0 {
+		fmt.Println("\n" + color.GreenString("🎯 Detected Environments:"))
+		for _, proj := range detectedSubProjects {
+			fmt.Printf("  ├── %-30s [%s]\n", proj.Path, color.YellowString(proj.Framework))
+		}
+
+	}
+
 	for i, file := range statsList {
 
 		if i == 10 {
@@ -142,6 +157,14 @@ func analze(currentDir string) {
 			extension := filepath.Ext(dirEntry.Name())
 			extCounts[extension]++
 			totalFiles++
+			fileName := dirEntry.Name()
+			if fileName == "go.mod" {
+				detectedSubProjects = append(detectedSubProjects, SubProjects{Path: currentDir, Framework: "Go Module"})
+			} else if fileName == "next.config.js" || fileName == "next.config.ts" {
+				detectedSubProjects = append(detectedSubProjects, SubProjects{Path: currentDir, Framework: "Next.js"})
+			} else if fileName == "package.json" {
+				detectedSubProjects = append(detectedSubProjects, SubProjects{Path: currentDir, Framework: "Node.js"})
+			}
 		}
 		totalEntries++
 		mu.Unlock()
