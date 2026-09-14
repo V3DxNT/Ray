@@ -76,13 +76,22 @@ func analze(currentDir string) {
 	dirEntries, err := os.ReadDir(currentDir)
 	if err != nil {
 		color.Red(err.Error())
+		return
 	}
 
 	for _, dirEntry := range dirEntries {
+		if shouldSkip(dirEntry.Name()) {
+			continue
+		}
+
 		mu.Lock()
 		if dirEntry.IsDir() {
 			totalDir++
-			go analze(filepath.Join(currentDir, dirEntry.Name()))
+			go func() {
+				wg.Add(1)
+				defer wg.Done()
+				analze(filepath.Join(currentDir, dirEntry.Name()))
+			}()
 		} else {
 			extension := filepath.Ext(dirEntry.Name())
 			extCounts[extension]++
