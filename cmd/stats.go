@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/fatih/color"
@@ -24,29 +25,86 @@ var mu sync.Mutex
 var sem = make(chan struct{}, 100)
 
 var extCounts map[string]int
-var framewords []string
+var frameworks []string
+var totalEntries int
+var totalDir int
 var totalFiles int
 
+var skippedList []string
+var defaultSkippedList []string = []string{
+	"node_modules",
+	".next",
+	"build",
+	".git",
+}
+
 func init() {
-	extCounts = make(map[string]int)
-	statsCmd.AddCommand(statsCmd)
+	statsCmd.Flags().StringSliceVarP(&skippedList, "skip", "s", []string{
+		"node_modules",
+		".next",
+		"build",
+		".git",
+	}, "skipped files")
+	RootCmd.AddCommand(statsCmd)
 }
 
 func stat(cmd *cobra.Command, args []string) {
+
+	extCounts = make(map[string]int)
 
 	if len(args) > 1 {
 		color.Red("Too many arguments")
 		return
 	}
-
+	var targetDir string
 	if len(args) == 0 {
 		pwd, _ := os.Getwd()
-		analze(pwd)
+		targetDir = pwd
 	} else {
-		analze(args[0])
+		targetDir = args[0]
 	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		analze(targetDir)
+	}()
+	wg.Wait()
 }
 
 func analze(currentDir string) {
 
+	dirEntries, err := os.ReadDir(currentDir)
+	if err != nil {
+		color.Red(err.Error())
+	}
+
+	for _, dirEntry := range dirEntries {
+		mu.Lock()
+		if dirEntry.IsDir() {
+			totalDir++
+			go analze(filepath.Join(currentDir, dirEntry.Name()))
+		} else {
+			extension := filepath.Ext(dirEntry.Name())
+			extCounts[extension]++
+			totalFiles++
+		}
+		totalEntries++
+		mu.Unlock()
+	}
+
+}
+
+func shoudldSkip(fileName string) bool {
+	for _, skipped := range skippedList {
+		if fileName == skipped {
+			return true
+		}
+	}
+
+	for _, skipped := range defaultSkippedList {
+		if fileName == skipped {
+			return true
+		}
+	}
+	return false
 }
