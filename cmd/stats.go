@@ -72,6 +72,7 @@ func stat(cmd *cobra.Command, args []string) {
 }
 
 func analze(currentDir string) {
+	sem <- struct{}{}
 
 	dirEntries, err := os.ReadDir(currentDir)
 	if err != nil {
@@ -80,16 +81,17 @@ func analze(currentDir string) {
 	}
 
 	for _, dirEntry := range dirEntries {
-		if shouldSkip(dirEntry.Name()) {
+		if shoudldSkip(dirEntry.Name()) {
 			continue
 		}
 
 		mu.Lock()
 		if dirEntry.IsDir() {
 			totalDir++
+			wg.Add(1)
 			go func() {
-				wg.Add(1)
 				defer wg.Done()
+				defer func() { <-sem }()
 				analze(filepath.Join(currentDir, dirEntry.Name()))
 			}()
 		} else {
