@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 
 	"github.com/fatih/color"
@@ -29,6 +31,12 @@ var frameworks []string
 var totalEntries int
 var totalDir int
 var totalFiles int
+var listFiles bool
+
+type ExtCount struct {
+	Name  string
+	Count int
+}
 
 var skippedList []string
 var defaultSkippedList []string = []string{
@@ -39,12 +47,9 @@ var defaultSkippedList []string = []string{
 }
 
 func init() {
-	statsCmd.Flags().StringSliceVarP(&skippedList, "skip", "s", []string{
-		"node_modules",
-		".next",
-		"build",
-		".git",
-	}, "skipped files")
+	statsCmd.Flags().StringSliceVarP(&skippedList, "skip", "s", []string{}, "skipped files")
+
+	statsCmd.Flags().BoolVarP(&listFiles, "list", "l", false, "framework files")
 	RootCmd.AddCommand(statsCmd)
 }
 
@@ -63,16 +68,33 @@ func stat(cmd *cobra.Command, args []string) {
 	} else {
 		targetDir = args[0]
 	}
+
+	sem <- struct{}{}
+	defer func() { <-sem }()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		analze(targetDir)
 	}()
 	wg.Wait()
+
+	if totalFiles == 0 {
+		fmt.Println("No files found")
+		return
+	}
+
+	var statsList []ExtCount
+	for k, val := range extCounts {
+		statsList = append(statsList, ExtCount{k, val})
+	}
+	sort.Slice(statsList, func(i, j int) bool {
+		return statsList[i].Count > statsList[j].Count
+	})
 }
 
 func analze(currentDir string) {
 	sem <- struct{}{}
+	defer func() { <-sem }()
 
 	dirEntries, err := os.ReadDir(currentDir)
 	if err != nil {
@@ -91,7 +113,6 @@ func analze(currentDir string) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				defer func() { <-sem }()
 				analze(filepath.Join(currentDir, dirEntry.Name()))
 			}()
 		} else {
