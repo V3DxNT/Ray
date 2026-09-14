@@ -23,7 +23,7 @@ var targets []string
 var onlyfirst bool
 
 func init() {
-	searchCmd.Flags().BoolVarP(&onlyfirst, "first", "f", true, "Search First Occurence")
+	searchCmd.Flags().BoolVarP(&onlyfirst, "first", "f", false, "Search First Occurence")
 	RootCmd.AddCommand(searchCmd)
 }
 
@@ -50,7 +50,6 @@ func hunt(currentDir string) {
 	}
 	dir, err := os.ReadDir(currentDir)
 	if err != nil {
-		fmt.Println(err)
 		return
 	}
 
