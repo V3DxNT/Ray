@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/fatih/color"
@@ -90,6 +91,15 @@ func stat(cmd *cobra.Command, args []string) {
 	sort.Slice(statsList, func(i, j int) bool {
 		return statsList[i].Count > statsList[j].Count
 	})
+
+	for _, file := range statsList {
+		name := file.Name
+		count := file.Count
+		pct := (float64(count) / float64(totalFiles)) * 100
+		filled := int((pct / 100) * 20)
+		bar := strings.Repeat("█", filled) + strings.Repeat("░", 20-filled)
+		fmt.Printf("%-10s %s %.1f%%\n", name, bar, pct)
+	}
 }
 
 func analze(currentDir string) {
