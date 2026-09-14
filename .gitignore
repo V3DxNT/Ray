@@ -8,6 +8,8 @@
 # Test binary
 *.test
 
+ray
+
 # Build output
 /bin/
 /build/
