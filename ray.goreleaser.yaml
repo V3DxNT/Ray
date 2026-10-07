@@ -1,0 +1,37 @@
+version: 2
+project_name: ray
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+
+nfpms:
+  - file_name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    homepage: https://github.com/V3DxNT/Ray
+    maintainer: Vedant
+    description: A high-performance systems engineering CLI.
+    formats:
+      - deb
+      - rpm
+
+brews:
+  - repository:
+      owner: V3DxNT
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/V3DxNT/Ray
+    description: "A high-performance systems engineering CLI."
