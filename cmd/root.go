@@ -21,9 +21,11 @@ var long string = "Long: `Ray is a high-performance, cross-platform CLI tool eng
 	"It maps out project architectures, hunts down buried files, and audits system health instantly." +
 	"\n\nCore Commands:" +
 	"\n  cast      Render a contextual, tech-aware ASCII directory tree." +
+	"\n  clean     Clean junk directories and large files interactively." +
 	"\n  search    Exhaustively hunt for a specific file across all directories." +
 	"\n  stats     Generate a codebase dashboard (tech stack, lines of code, sizes)." +
 	"\n  audit     Scan the repository for exposed secrets and missing standard files." +
+	"\n  doctor    Verify system environment and toolchain dependencies." +
 	"\n  dedup     Find identical files hidden across massive repositories using SHA-256." +
 	"\n  upgrade   Seamlessly self-update the Ray binary to the latest version.`,"
 
