@@ -136,27 +136,35 @@ func runClean(cmd *cobra.Command, args []string) {
 
 func printCleanHeader(path string) {
 	fmt.Println()
-	color.Cyan("╭─────────────────────────────────────────────────────────────╮")
-	color.Cyan("│                    RAY CLEAN (SWEEPER)                      │")
-	color.Cyan("╰─────────────────────────────────────────────────────────────╯")
 	fmt.Printf("🔍 Scanning: %s\n", color.YellowString(path))
 	fmt.Printf("⚙  Threshold: %s (Heavy files: %d MB | Junk dirs: dynamic)\n\n", color.GreenString("%d MB", cleanThreshold), cleanThreshold)
 }
 
 func renderCleanDashboard(targets []CleanTarget, totalSize int64) {
-	color.Cyan("┌── Found %d Cleanup Candidates (Total Reclaimable: %s) ──", len(targets), color.HiMagentaString(formatCleanBytes(totalSize)))
+	color.Cyan("╭─────────────────────────────────────────────────────────────╮")
+	color.Cyan("│                DETECTED CLEANUP CANDIDATES                  │")
+	color.Cyan("├─────────────────────────────────────────────────────────────┤")
+	summaryLine := fmt.Sprintf("Total Candidates: %d  │  Total Reclaimable: %s", len(targets), formatCleanBytes(totalSize))
+	fmt.Printf(color.CyanString("│")+" %-69s "+color.CyanString("│\n"), color.HiMagentaString(summaryLine))
+	color.Cyan("├─────────────────────────────────────────────────────────────┤")
 
 	for i, t := range targets {
 		badge := formatCategoryBadge(t.Category)
-		sizeStr := color.HiYellowString("%10s", formatCleanBytes(t.Size))
+		sizeStr := color.HiYellowString("%9s", formatCleanBytes(t.Size))
 		bar := renderSizeBar(t.Size, totalSize)
+		itemPath := t.Path
+		if len(itemPath) > 36 {
+			itemPath = "..." + itemPath[len(itemPath)-33:]
+		}
 
-		fmt.Printf("│ %2d. %s %s %s  %s\n", i+1, badge, sizeStr, bar, color.WhiteString(t.Path))
+		line := fmt.Sprintf("%2d. %s %s %s  %s", i+1, badge, sizeStr, bar, color.WhiteString(itemPath))
+		fmt.Printf(color.CyanString("│")+" %-69s "+color.CyanString("│\n"), line)
 		if t.Description != "" {
-			fmt.Printf("│     └── %s\n", color.HiBlackString(t.Description))
+			descLine := fmt.Sprintf("    └── %s", color.HiBlackString(t.Description))
+			fmt.Printf(color.CyanString("│")+" %-69s "+color.CyanString("│\n"), descLine)
 		}
 	}
-	color.Cyan("└──────────────────────────────────────────────────────────────────────────────┘\n")
+	color.Cyan("╰─────────────────────────────────────────────────────────────╯\n")
 }
 
 func formatCategoryBadge(cat CleanCategory) string {
