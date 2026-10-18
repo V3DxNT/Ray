@@ -26,6 +26,7 @@ var long string = "Long: `Ray is a high-performance, cross-platform CLI tool eng
 	"\n  stats     Generate a codebase dashboard (tech stack, lines of code, sizes)." +
 	"\n  audit     Scan the repository for exposed secrets and missing standard files." +
 	"\n  doctor    Verify system environment and toolchain dependencies." +
+	"\n  setup     Inspect prerequisites and bootstrap missing toolchains and dependencies." +
 	"\n  dedup     Find identical files hidden across massive repositories using SHA-256." +
 	"\n  upgrade   Seamlessly self-update the Ray binary to the latest version.`,"
 
