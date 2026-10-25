@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -9,56 +11,77 @@ import (
 	"github.com/spf13/cobra"
 )
 
-/*
-This is for showing the ASCII tree
-*/
-
 var castCmd = &cobra.Command{
-	Use:   "cast",
-	Short: "Cast commands",
-	Run:   run,
+	Use:   "cast [path]",
+	Short: "Render a contextual, tech-aware ASCII directory tree",
+	Run:   runCast,
 }
 
 var defaultSkips = []string{"node_modules", ".git", "data", "build", ".next"}
 var skipDirs []string
 var showAll bool = false
+var outputFile string
 
 func init() {
 	RootCmd.AddCommand(castCmd)
-	castCmd.Flags().BoolVarP(&showAll, "all", "a", false,
-		"Ignore the skip list and show all files")
-
+	castCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Ignore the skip list and show all files")
 	castCmd.Flags().StringSliceVarP(&skipDirs, "skip", "s", []string{
 		"node_modules",
 		".git",
 		"build",
 		"data",
-	},
-		"Comma-separated list of folders to skip",
-	)
+	}, "Comma-separated list of folders to skip")
+	castCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output file path to save the directory tree")
 }
 
-func run(cmd *cobra.Command, args []string) {
-	color.Cyan("Printing Files")
-
-	if len(args) == 0 {
-		walk(".", "")
-	} else {
-		walk(args[0], "")
+func runCast(cmd *cobra.Command, args []string) {
+	target := "."
+	if len(args) > 0 {
+		target = args[0]
 	}
 
+	var w io.Writer = os.Stdout
+	var file *os.File
+	var buf *bufio.Writer
+
+	if outputFile != "" {
+		dir := filepath.Dir(outputFile)
+		if dir != "." && dir != "" {
+			_ = os.MkdirAll(dir, 0755)
+		}
+		f, err := os.Create(outputFile)
+		if err != nil {
+			color.Red("Failed to create output file %s: %v", outputFile, err)
+			return
+		}
+		file = f
+		defer file.Close()
+		buf = bufio.NewWriter(file)
+		defer buf.Flush()
+		w = buf
+		color.Cyan("Generating directory tree for %s...", target)
+	} else {
+		color.Cyan("Printing Files")
+	}
+
+	walk(target, "", w)
+
+	if outputFile != "" {
+		if buf != nil {
+			_ = buf.Flush()
+		}
+		color.Green("✔ Directory tree successfully written to %s", outputFile)
+	}
 }
 
-func walk(targetPath string, prefix string) {
-
+func walk(targetPath string, prefix string, w io.Writer) {
 	dir, err := os.ReadDir(targetPath)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(w, err)
 		return
 	}
 
 	for i, file := range dir {
-
 		if !showAll && shouldSkip(file.Name()) {
 			continue
 		}
@@ -72,16 +95,15 @@ func walk(targetPath string, prefix string) {
 
 		path := filepath.Join(targetPath, file.Name())
 
-		fmt.Println(prefix + pointer + file.Name())
+		fmt.Fprintln(w, prefix+pointer+file.Name())
 
 		if file.IsDir() {
 			if isLast {
-				walk(path, prefix+"    ")
+				walk(path, prefix+"    ", w)
 			} else {
-				walk(path, prefix+"│   ")
+				walk(path, prefix+"│   ", w)
 			}
 		}
-
 	}
 }
 
