@@ -93,6 +93,7 @@ var (
 	auditJson        bool
 	auditSecretsOnly bool
 	auditMetricsOnly bool
+	auditEnv         bool
 )
 
 var defaultAuditSkips = []string{
@@ -138,6 +139,7 @@ func init() {
 	auditCmd.Flags().BoolVar(&auditJson, "json", false, "Output results in JSON format")
 	auditCmd.Flags().BoolVar(&auditSecretsOnly, "secrets-only", false, "Only run and display secrets audit")
 	auditCmd.Flags().BoolVar(&auditMetricsOnly, "metrics-only", false, "Only run and display codebase syntax metrics")
+	auditCmd.Flags().BoolVar(&auditEnv, "env", false, "Audit environment variables against .env definitions")
 	RootCmd.AddCommand(auditCmd)
 }
 
@@ -251,7 +253,31 @@ func runAudit(cmd *cobra.Command, args []string) {
 		renderSecretsBox(findings)
 	}
 
-	if auditStrict && !isClean {
+	if auditEnv {
+		envReport := PerformEnvAudit(absPath, ".env", auditSkipDirs, false)
+		renderEnvAuditBox(envReport)
+		if len(envReport.Missing) > 0 {
+			fmt.Println()
+			for _, item := range envReport.Missing {
+				for _, occ := range item.Occurrences {
+					relFile := occ.FilePath
+					if rel, err := filepath.Rel(absPath, occ.FilePath); err == nil && !strings.HasPrefix(rel, "..") {
+						relFile = rel
+					}
+					fmt.Printf("%s Missing from %s: %s (Found in %s:%d)\n",
+						color.RedString("❌"),
+						color.HiYellowString(filepath.Base(envReport.EnvFile)),
+						color.HiWhiteString(item.Variable),
+						color.CyanString(relFile),
+						occ.LineNum,
+					)
+				}
+			}
+			fmt.Println()
+		}
+	}
+
+	if auditStrict && (!isClean || (auditEnv && len(findings) > 0)) {
 		os.Exit(1)
 	}
 }
