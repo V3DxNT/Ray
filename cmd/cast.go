@@ -59,7 +59,11 @@ func runCast(cmd *cobra.Command, args []string) {
 		buf = bufio.NewWriter(file)
 		defer buf.Flush()
 		w = buf
-		color.Cyan("Generating directory tree for %s...", target)
+		if target == "." {
+			color.Cyan("Generating directory tree...")
+		} else {
+			color.Cyan("Generating directory tree for %s...", target)
+		}
 	} else {
 		color.Cyan("Printing Files")
 	}
