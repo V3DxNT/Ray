@@ -29,6 +29,7 @@ var long string = "Long: `Ray is a high-performance, cross-platform CLI tool eng
 	"\n  setup     Inspect prerequisites and bootstrap missing toolchains and dependencies." +
 	"\n  scaffold  Generate complete architectures from YAML/JSON blueprints or interactively." +
 	"\n  env       Audit repository for environment variable references and missing .env entries." +
+	"\n  ignore    Generate composable .gitignore and .dockerignore files for polyglot codebases." +
 	"\n  dedup     Find identical files hidden across massive repositories using SHA-256." +
 	"\n  upgrade   Seamlessly self-update the Ray binary to the latest version.`,"
 

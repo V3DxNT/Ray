@@ -1,0 +1,51 @@
+# Version Control
+.git/
+.gitignore
+.gitattributes
+
+# Environment & Sensitive Credentials
+.env
+.env.*
+!.env.example
+
+# Dependencies & Package Managers
+node_modules/
+vendor/
+target/
+.venv/
+venv/
+__pycache__/
+
+# Build Outputs & Artifacts
+dist/
+build/
+out/
+.next/
+.nuxt/
+.turbo/
+.cache/
+.gradle/
+*.class
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Documentation & Specifications
+README.md
+docs/
+*.md
+
+# Operating System & IDE Files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.log
+
+# Docker Configuration Files
+Dockerfile*
+docker-compose*.yml
+.dockerignore

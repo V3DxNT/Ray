@@ -1,0 +1,23 @@
+# Node & JavaScript Dependencies
+node_modules/
+jspm_packages/
+.pnp
+.pnp.js
+.pnpm-debug.log
+
+# Build Outputs & Bundles
+dist/
+build/
+out/
+.next/
+.nuxt/
+.turbo/
+.cache/
+.parcel-cache/
+.vuepress/dist/
+.serverless/
+
+# Coverage Directory
+coverage/
+*.lcov
+.nyc_output

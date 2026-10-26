@@ -1,0 +1,17 @@
+# Go Binaries and Build Artifacts
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+cover.out
+coverage.html
+
+# Go Workspace & Caches
+go.work
+go.work.sum
+vendor/
