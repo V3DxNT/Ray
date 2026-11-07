@@ -14,7 +14,7 @@ var RootCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Ray CLI v" + cmd.Version)
 	},
-	Version: "1.0.0",
+	Version: "3.0.0",
 }
 
 var long string = "Ray is a friendly command-line tool that helps you understand, clean up,\n" +
