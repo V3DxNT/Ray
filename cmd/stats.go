@@ -16,8 +16,13 @@ import (
 
 var statsCmd = &cobra.Command{
 	Use:   "stats [path]",
-	Short: "Generate a codebase dashboard (tech stack, lines of code, sizes)",
-	Run:   stat,
+	Short: "Show a dashboard of code languages, file counts, and sizes",
+	Long:  "Scan your repository to count files by language, calculate total lines and sizes, and detect what technologies and frameworks your project is using.",
+	Example: `  ray stats
+  ray stats src/
+  ray stats --list
+  ray stats --skip vendor,build`,
+	Run: stat,
 }
 
 var wg sync.WaitGroup
@@ -40,7 +45,7 @@ var detectedSubProjects map[string]string
 
 func init() {
 	statsCmd.Flags().StringSliceVarP(&skippedList, "skip", "s", []string{}, "Folders or files to skip")
-	statsCmd.Flags().BoolVarP(&listFiles, "list", "l", false, "List detected subproject environments")
+	statsCmd.Flags().BoolVarP(&listFiles, "list", "l", false, "Show detailed list of detected subprojects and their locations")
 	RootCmd.AddCommand(statsCmd)
 }
 

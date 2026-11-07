@@ -9,7 +9,7 @@ import (
 
 var RootCmd = &cobra.Command{
 	Use:   "ray",
-	Short: "Ray CLI",
+	Short: "A developer toolkit to explore, check, clean, and organize your code",
 	Long:  long,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Ray CLI v" + cmd.Version)
@@ -17,21 +17,23 @@ var RootCmd = &cobra.Command{
 	Version: "1.0.0",
 }
 
-var long string = "Long: `Ray is a high-performance, cross-platform CLI tool engineered for deep codebase introspection.\n" +
-	"It maps out project architectures, hunts down buried files, and audits system health instantly." +
-	"\n\nCore Commands:" +
-	"\n  cast      Render a contextual, tech-aware ASCII directory tree." +
-	"\n  clean     Clean junk directories and large files interactively." +
-	"\n  search    Exhaustively hunt for a specific file across all directories." +
-	"\n  stats     Generate a codebase dashboard (tech stack, lines of code, sizes)." +
-	"\n  audit     Scan the repository for exposed secrets and missing standard files." +
-	"\n  doctor    Verify system environment and toolchain dependencies." +
-	"\n  setup     Inspect prerequisites and bootstrap missing toolchains and dependencies." +
-	"\n  scaffold  Generate complete architectures from YAML/JSON blueprints or interactively." +
-	"\n  env       Audit repository for environment variable references and missing .env entries." +
-	"\n  ignore    Generate composable .gitignore and .dockerignore files for polyglot codebases." +
-	"\n  dedup     Find identical files hidden across massive repositories using SHA-256." +
-	"\n  upgrade   Seamlessly self-update the Ray binary to the latest version.`,"
+var long string = "Ray is a friendly command-line tool that helps you understand, clean up,\n" +
+	"and manage your projects.\n\n" +
+	"It gives you a visual directory tree, checks what tools and packages are installed,\n" +
+	"scans for leaked secrets and missing environment variables, cleans up heavy build\n" +
+	"cache folders, finds duplicate files, and creates new project structures.\n\n" +
+	"Core Commands:\n" +
+	"  cast      Show a visual tree of folders and files\n" +
+	"  stats     Show code languages, file counts, and sizes\n" +
+	"  search    Find files by name across your project\n" +
+	"  doctor    Check if required runtimes, tools, and compilers are installed\n" +
+	"  setup     Install missing tools and set up project dependencies\n" +
+	"  clean     Find and remove build cache, temporary files, and heavy folders\n" +
+	"  dedup     Find identical duplicate files across your project\n" +
+	"  audit     Check for leaked secrets, standard files, and code metrics\n" +
+	"  env       Find environment variables used in code and check against .env\n" +
+	"  ignore    Generate .gitignore and .dockerignore files for your project\n" +
+	"  scaffold  Create project folders and starter files from a blueprint or interactively"
 
 func Execute() {
 	if err := RootCmd.Execute(); err != nil {

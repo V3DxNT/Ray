@@ -14,8 +14,14 @@ import (
 
 var castCmd = &cobra.Command{
 	Use:   "cast [path]",
-	Short: "Render a contextual, tech-aware ASCII directory tree",
-	Run:   runCast,
+	Short: "Show a visual tree of folders and files",
+	Long:  "Display a clean, color-coded visual tree of your folders and files. Ray automatically skips noisy folders like node_modules and .git by default so you can focus on your code.",
+	Example: `  ray cast
+  ray cast src/
+  ray cast --output tree.txt
+  ray cast --all
+  ray cast --skip dist,coverage`,
+	Run: runCast,
 }
 
 var skipDirs []string
@@ -24,14 +30,14 @@ var outputFile string
 
 func init() {
 	RootCmd.AddCommand(castCmd)
-	castCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Ignore the skip list and show all files")
+	castCmd.Flags().BoolVarP(&showAll, "all", "a", false, "Show all files and folders without skipping anything")
 	castCmd.Flags().StringSliceVarP(&skipDirs, "skip", "s", []string{
 		"node_modules",
 		".git",
 		"build",
 		"data",
-	}, "Comma-separated list of folders to skip")
-	castCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output file path to save the directory tree")
+	}, "Comma-separated list of folders or files to skip")
+	castCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Save the directory tree to a text file instead of printing")
 }
 
 func runCast(cmd *cobra.Command, args []string) {

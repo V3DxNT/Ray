@@ -42,16 +42,23 @@ var cleanIncludeDocker bool
 
 var cleanCmd = &cobra.Command{
 	Use:   "clean [path]",
-	Short: "Clean junk directories, heavy files, and system cache",
-	Run:   runClean,
+	Short: "Find and remove build cache, temporary files, and heavy folders",
+	Long:  "Scan your project for junk files (like .DS_Store or logs), large build folders (like node_modules, target, or dist), and optionally unused Docker data. You can review sizes and choose what to safely delete.",
+	Example: `  ray clean
+  ray clean --list
+  ray clean --threshold 20
+  ray clean --force
+  ray clean --docker
+  ray clean --skip node_modules`,
+	Run: runClean,
 }
 
 func init() {
-	cleanCmd.Flags().Int64VarP(&cleanThreshold, "threshold", "t", 10, "Threshold in MB for heavy files and min directory size")
-	cleanCmd.Flags().StringSliceVarP(&cleanSkip, "skip", "s", []string{}, "Folders or files to skip")
-	cleanCmd.Flags().BoolVarP(&cleanListOnly, "list", "l", false, "List targets only without interactive deletion")
-	cleanCmd.Flags().BoolVarP(&cleanForce, "force", "f", false, "Delete all targets without confirmation")
-	cleanCmd.Flags().BoolVarP(&cleanIncludeDocker, "docker", "d", false, "Include Docker dangling images and build cache")
+	cleanCmd.Flags().Int64VarP(&cleanThreshold, "threshold", "t", 10, "Minimum size in MB for heavy files and folders")
+	cleanCmd.Flags().StringSliceVarP(&cleanSkip, "skip", "s", []string{}, "Folders or files to leave untouched")
+	cleanCmd.Flags().BoolVarP(&cleanListOnly, "list", "l", false, "Show what would be cleaned without asking to delete")
+	cleanCmd.Flags().BoolVarP(&cleanForce, "force", "f", false, "Delete matching files immediately without asking for confirmation")
+	cleanCmd.Flags().BoolVarP(&cleanIncludeDocker, "docker", "d", false, "Also check for unused Docker images and build cache")
 	RootCmd.AddCommand(cleanCmd)
 }
 

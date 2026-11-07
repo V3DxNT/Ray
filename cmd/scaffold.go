@@ -41,18 +41,25 @@ var (
 
 var scaffoldCmd = &cobra.Command{
 	Use:   "scaffold [blueprint-file]",
-	Short: "Generate codebase architectures from YAML/JSON blueprints or interactively",
-	Run:   runScaffold,
+	Short: "Create project folders and starter files from a blueprint or interactively",
+	Long:  "Quickly generate a project structure with starter code. You can provide a YAML or JSON blueprint file, or run the interactive wizard to choose your language, framework, database, and folder layout step by step.",
+	Example: `  ray scaffold
+  ray scaffold --interactive
+  ray scaffold blueprint.yaml
+  ray scaffold api.json --dir my-api
+  ray scaffold --interactive --save template.yaml
+  ray scaffold blueprint.yaml --here --yes`,
+	Run: runScaffold,
 }
 
 func init() {
 	RootCmd.AddCommand(scaffoldCmd)
-	scaffoldCmd.Flags().BoolVarP(&scaffoldInteractive, "interactive", "i", false, "Launch interactive architecture builder")
-	scaffoldCmd.Flags().StringVarP(&scaffoldTargetDir, "dir", "d", "", "Target directory path to scaffold into")
-	scaffoldCmd.Flags().BoolVar(&scaffoldHere, "here", false, "Scaffold directly into the current directory")
-	scaffoldCmd.Flags().BoolVarP(&scaffoldYes, "yes", "y", false, "Automatic confirmation for scaffolding plan")
-	scaffoldCmd.Flags().StringVar(&scaffoldSave, "save", "", "Export generated blueprint to file path (e.g. blueprint.yaml)")
-	scaffoldCmd.Flags().BoolVar(&scaffoldDryRun, "dry-run", false, "Preview scaffold operations without writing files")
+	scaffoldCmd.Flags().BoolVarP(&scaffoldInteractive, "interactive", "i", false, "Answer questions step by step to build your project layout")
+	scaffoldCmd.Flags().StringVarP(&scaffoldTargetDir, "dir", "d", "", "Folder name or path where files should be created")
+	scaffoldCmd.Flags().BoolVar(&scaffoldHere, "here", false, "Create files directly inside the current folder")
+	scaffoldCmd.Flags().BoolVarP(&scaffoldYes, "yes", "y", false, "Create files immediately without asking for confirmation")
+	scaffoldCmd.Flags().StringVar(&scaffoldSave, "save", "", "Save your chosen configuration into a blueprint YAML file for reuse")
+	scaffoldCmd.Flags().BoolVar(&scaffoldDryRun, "dry-run", false, "Show what files would be created without actually creating them")
 }
 
 func runScaffold(cmd *cobra.Command, args []string) {

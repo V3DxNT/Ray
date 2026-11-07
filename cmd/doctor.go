@@ -26,8 +26,12 @@ var doctorJson bool
 
 var doctorCmd = &cobra.Command{
 	Use:   "doctor [path]",
-	Short: "Validate development environment, toolchains, and project dependencies",
-	Run:   runDoctor,
+	Short: "Check if required runtimes, tools, and compilers are installed",
+	Long:  "Inspect your project to detect what languages, frameworks, and databases it uses, then check if your computer has the necessary tools (like Node, Go, Python, Docker, etc.) installed and up to date.",
+	Example: `  ray doctor
+  ray doctor ./my-app
+  ray doctor --json`,
+	Run: runDoctor,
 }
 
 func init() {

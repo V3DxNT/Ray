@@ -40,15 +40,20 @@ var (
 
 var dedupCmd = &cobra.Command{
 	Use:   "dedup [path]",
-	Short: "Find identical files hidden across repositories using SHA-256 hashing",
-	Run:   runDedup,
+	Short: "Find identical duplicate files across your project",
+	Long:  "Quickly find duplicate copies of files taking up unnecessary space using SHA-256 checksums. It groups identical files together and shows how much storage you can recover.",
+	Example: `  ray dedup
+  ray dedup --min-size 1024
+  ray dedup --skip vendor,build
+  ray dedup --json`,
+	Run: runDedup,
 }
 
 func init() {
 	RootCmd.AddCommand(dedupCmd)
 	dedupCmd.Flags().StringSliceVarP(&dedupSkipDirs, "skip", "s", []string{}, "Folders or files to skip")
 	dedupCmd.Flags().BoolVar(&dedupJson, "json", false, "Output results in JSON format")
-	dedupCmd.Flags().Int64VarP(&dedupMinSize, "min-size", "m", 1, "Minimum file size in bytes to consider")
+	dedupCmd.Flags().Int64VarP(&dedupMinSize, "min-size", "m", 1, "Smallest file size in bytes to check")
 }
 
 func runDedup(cmd *cobra.Command, args []string) {

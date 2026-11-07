@@ -57,15 +57,22 @@ var (
 
 var setupCmd = &cobra.Command{
 	Use:   "setup [path]",
-	Short: "Inspect requirements, install missing toolchains and bootstrap project dependencies",
-	Run:   runSetup,
+	Short: "Install missing tools and set up project dependencies",
+	Long:  "Check what runtimes and tools are needed for your project, show what is missing on your computer, and help you install them using your system package manager (Homebrew on macOS, apt on Linux, winget/choco on Windows). It can also run package managers (like npm install, go mod download, pip install) for all detected components.",
+	Example: `  ray setup
+  ray setup --dry-run
+  ray setup --system-only
+  ray setup --deps-only
+  ray setup --yes
+  ray setup --json`,
+	Run: runSetup,
 }
 
 func init() {
-	setupCmd.Flags().BoolVarP(&setupAutoConfirm, "yes", "y", false, "Auto-confirm all installation prompts")
-	setupCmd.Flags().BoolVar(&setupDryRun, "dry-run", false, "Display setup execution plan without installing")
-	setupCmd.Flags().BoolVar(&setupSystemOnly, "system-only", false, "Install missing system tools only, skipping package dependencies")
-	setupCmd.Flags().BoolVar(&setupDepsOnly, "deps-only", false, "Install project package dependencies only, skipping system tools")
+	setupCmd.Flags().BoolVarP(&setupAutoConfirm, "yes", "y", false, "Automatically answer yes to all installation prompts")
+	setupCmd.Flags().BoolVar(&setupDryRun, "dry-run", false, "Preview what would be installed without making changes")
+	setupCmd.Flags().BoolVar(&setupSystemOnly, "system-only", false, "Only install system tools (like Go, Node, Docker), skipping package dependencies")
+	setupCmd.Flags().BoolVar(&setupDepsOnly, "deps-only", false, "Only install project package dependencies (like npm or pip), skipping system tools")
 	setupCmd.Flags().BoolVar(&setupJson, "json", false, "Output setup plan and results in JSON format")
 	RootCmd.AddCommand(setupCmd)
 }

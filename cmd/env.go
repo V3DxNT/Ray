@@ -61,17 +61,24 @@ var (
 
 var envCmd = &cobra.Command{
 	Use:   "env [path]",
-	Short: "Audit repository for environment variable references and missing .env entries",
-	Run:   runEnvAudit,
+	Short: "Find environment variables used in code and check against .env",
+	Long:  "Scan your code across JavaScript, TypeScript, Go, Python, Rust, Java, and PHP to find environment variable lookups (like process.env.API_KEY or os.Getenv(\"DB_HOST\")). Then verify that every variable is defined in your .env file so nothing breaks at runtime.",
+	Example: `  ray env
+  ray env --file .env.local
+  ray env --fix
+  ray env --strict
+  ray env --json
+  ray env --skip tests,fixtures`,
+	Run: runEnvAudit,
 }
 
 func init() {
 	RootCmd.AddCommand(envCmd)
-	envCmd.Flags().StringVarP(&envFileCustom, "file", "f", ".env", "Custom environment file to check against")
-	envCmd.Flags().BoolVarP(&envStrict, "strict", "s", false, "Exit with non-zero exit code if missing environment variables are found")
-	envCmd.Flags().BoolVar(&envJson, "json", false, "Render results as JSON")
-	envCmd.Flags().BoolVar(&envFix, "fix", false, "Append missing variables with blank placeholders to .env")
-	envCmd.Flags().StringSliceVar(&envSkipDirs, "skip", []string{}, "Additional directories to skip")
+	envCmd.Flags().StringVarP(&envFileCustom, "file", "f", ".env", "Path to the environment file to check against")
+	envCmd.Flags().BoolVarP(&envStrict, "strict", "s", false, "Exit with an error code if any missing environment variables are found")
+	envCmd.Flags().BoolVar(&envJson, "json", false, "Output results in JSON format")
+	envCmd.Flags().BoolVar(&envFix, "fix", false, "Automatically add missing variables with blank placeholders to .env")
+	envCmd.Flags().StringSliceVar(&envSkipDirs, "skip", []string{}, "Additional folders or files to skip")
 }
 
 func runEnvAudit(cmd *cobra.Command, args []string) {

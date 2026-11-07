@@ -96,17 +96,25 @@ var (
 
 var auditCmd = &cobra.Command{
 	Use:   "audit [path]",
-	Short: "Scan codebase for exposed secrets, standard repository files, and syntax metrics",
-	Run:   runAudit,
+	Short: "Check for leaked secrets, standard files, and code metrics",
+	Long:  "Scan your codebase to make sure sensitive information (like API keys or passwords) isn't accidentally committed in plain text. It also checks for standard project files (like README, LICENSE, and .gitignore) and counts functions, classes, and code lines.",
+	Example: `  ray audit
+  ray audit --strict
+  ray audit --secrets-only
+  ray audit --metrics-only
+  ray audit --env
+  ray audit --json
+  ray audit --skip testdata,fixtures`,
+	Run: runAudit,
 }
 
 func init() {
 	auditCmd.Flags().StringSliceVarP(&auditSkipDirs, "skip", "s", []string{}, "Folders or files to skip")
-	auditCmd.Flags().BoolVar(&auditStrict, "strict", false, "Exit with non-zero exit code if secrets are discovered")
+	auditCmd.Flags().BoolVar(&auditStrict, "strict", false, "Exit with an error code if any secrets are discovered")
 	auditCmd.Flags().BoolVar(&auditJson, "json", false, "Output results in JSON format")
-	auditCmd.Flags().BoolVar(&auditSecretsOnly, "secrets-only", false, "Only run and display secrets audit")
-	auditCmd.Flags().BoolVar(&auditMetricsOnly, "metrics-only", false, "Only run and display codebase syntax metrics")
-	auditCmd.Flags().BoolVar(&auditEnv, "env", false, "Audit environment variables against .env definitions")
+	auditCmd.Flags().BoolVar(&auditSecretsOnly, "secrets-only", false, "Only scan for sensitive keys and credentials")
+	auditCmd.Flags().BoolVar(&auditMetricsOnly, "metrics-only", false, "Only count code metrics like functions and lines")
+	auditCmd.Flags().BoolVar(&auditEnv, "env", false, "Also check if environment variables in code exist in .env")
 	RootCmd.AddCommand(auditCmd)
 }
 

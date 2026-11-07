@@ -13,9 +13,15 @@ import (
 )
 
 var searchCmd = &cobra.Command{
-	Use:   "search [filename...]",
-	Short: "Hunt for exact and partial file matches across directories",
-	Run:   search,
+	Use:   "search <filename...>",
+	Short: "Find files by name across your project",
+	Long:  "Quickly find exact and similar filenames anywhere in your project folders.",
+	Example: `  ray search config.json
+  ray search main.go utils.py
+  ray search --first app.js
+  ray search --all test
+  ray search --skip vendor,build .env`,
+	Run: search,
 }
 
 var targets []string
@@ -24,9 +30,9 @@ var searchShowAll bool
 var searchSkipDirs []string
 
 func init() {
-	searchCmd.Flags().BoolVarP(&searchOnlyFirst, "first", "f", false, "Stop search on first exact occurrence")
-	searchCmd.Flags().BoolVarP(&searchShowAll, "all", "a", false, "Show all similar results without truncation")
-	searchCmd.Flags().StringSliceVarP(&searchSkipDirs, "skip", "s", []string{}, "Folders or files to skip")
+	searchCmd.Flags().BoolVarP(&searchOnlyFirst, "first", "f", false, "Stop searching after finding the first exact match")
+	searchCmd.Flags().BoolVarP(&searchShowAll, "all", "a", false, "Show all similar results without cutting off the list")
+	searchCmd.Flags().StringSliceVarP(&searchSkipDirs, "skip", "s", []string{}, "Folders or files to skip while searching")
 	RootCmd.AddCommand(searchCmd)
 }
 

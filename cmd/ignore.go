@@ -40,15 +40,23 @@ var (
 
 var ignoreCmd = &cobra.Command{
 	Use:   "ignore [path]",
-	Short: "Generate composable .gitignore and .dockerignore files for polyglot codebases",
-	Run:   runIgnore,
+	Short: "Generate .gitignore and .dockerignore files for your project",
+	Long:  "Detect the programming languages and frameworks used in your project and automatically create ready-to-use .gitignore and .dockerignore files. If multiple languages are detected (such as Go with React), Ray combines the rules cleanly.",
+	Example: `  ray ignore
+  ray ignore --git
+  ray ignore --docker
+  ray ignore --stack go,node
+  ray ignore --force
+  ray ignore --append
+  ray ignore --dry-run`,
+	Run: runIgnore,
 }
 
 func init() {
 	RootCmd.AddCommand(ignoreCmd)
-	ignoreCmd.Flags().StringSliceVarP(&ignoreStacksFlag, "stack", "s", []string{}, "Explicit stacks to include (e.g. go,node,python)")
-	ignoreCmd.Flags().BoolVarP(&ignoreForce, "force", "f", false, "Overwrite existing .gitignore and .dockerignore without prompting")
-	ignoreCmd.Flags().BoolVarP(&ignoreAppend, "append", "a", false, "Append generated rules to existing files")
+	ignoreCmd.Flags().StringSliceVarP(&ignoreStacksFlag, "stack", "s", []string{}, "Specific languages or frameworks to include (e.g. go, node, python)")
+	ignoreCmd.Flags().BoolVarP(&ignoreForce, "force", "f", false, "Overwrite existing files without asking")
+	ignoreCmd.Flags().BoolVarP(&ignoreAppend, "append", "a", false, "Add new rules to the end of existing ignore files")
 	ignoreCmd.Flags().BoolVar(&ignoreGitOnly, "git", false, "Only generate .gitignore")
 	ignoreCmd.Flags().BoolVar(&ignoreDockerOnly, "docker", false, "Only generate .dockerignore")
 	ignoreCmd.Flags().BoolVar(&ignoreDryRun, "dry-run", false, "Preview generated ignore rules without writing to disk")
