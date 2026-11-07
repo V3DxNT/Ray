@@ -5,9 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 
+	"github.com/V3DxNT/Ray/internal/detect"
+	"github.com/V3DxNT/Ray/internal/fsutil"
+	"github.com/V3DxNT/Ray/internal/ui"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -34,14 +36,6 @@ type ExtCount struct {
 }
 
 var skippedList []string
-var defaultSkippedList = []string{
-	"node_modules",
-	".next",
-	"build",
-	"dist",
-	".git",
-}
-
 var detectedSubProjects map[string]string
 
 func init() {
@@ -78,13 +72,8 @@ func stat(cmd *cobra.Command, args []string) {
 	}
 
 	info, err := os.Stat(absPath)
-	if err != nil {
-		color.Red("Path does not exist: %v", err)
-		return
-	}
-
-	if !info.IsDir() {
-		color.Red("Target path must be a directory")
+	if err != nil || !info.IsDir() {
+		color.Red("Target path must be an existing directory")
 		return
 	}
 
@@ -101,23 +90,25 @@ func stat(cmd *cobra.Command, args []string) {
 	fmt.Printf("🔍 Target: %s\n\n", color.YellowString(absPath))
 
 	if totalFiles == 0 {
-		color.Cyan("╭─────────────────────────────────────────────────────────────╮")
-		color.Cyan("│                 CODEBASE SUMMARY DASHBOARD                  │")
-		color.Cyan("├─────────────────────────────────────────────────────────────┤")
+		ui.PrintBoxTop()
+		fmt.Printf(color.CyanString("│")+" %-59s "+color.CyanString("│\n"), color.HiWhiteString("CODEBASE SUMMARY DASHBOARD"))
+		ui.PrintBoxDivider()
 		fmt.Printf(color.CyanString("│")+" %-69s "+color.CyanString("│\n"), color.YellowString("No matching files found in target directory."))
-		color.Cyan("╰─────────────────────────────────────────────────────────────╯\n")
+		ui.PrintBoxBottom()
+		fmt.Println()
 		return
 	}
 
-	color.Cyan("╭─────────────────────────────────────────────────────────────╮")
-	color.Cyan("│                 CODEBASE SUMMARY DASHBOARD                  │")
-	color.Cyan("├──────────────────────────────┬──────────────────────────────┤")
+	ui.PrintBoxTop()
+	fmt.Printf(color.CyanString("│")+" %-59s "+color.CyanString("│\n"), color.HiWhiteString("CODEBASE SUMMARY DASHBOARD"))
+	ui.PrintBoxDivider2Col()
 	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-28s "+color.CyanString("│\n"), "Metric Category", "Scanned Quantity")
-	color.Cyan("├──────────────────────────────┼──────────────────────────────┤")
+	ui.PrintBoxDivider2Col()
 	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), "Total File System Entries", color.HiYellowString("%d", totalEntries))
 	fmt.Printf(color.CyanString("│")+" Source & Data Files           "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.HiWhiteString("%d", totalFiles))
 	fmt.Printf(color.CyanString("│")+" Directory Branches            "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.HiCyanString("%d", totalDir))
-	color.Cyan("╰──────────────────────────────┴──────────────────────────────╯\n")
+	ui.PrintBoxBottom()
+	fmt.Println()
 
 	var statsList []ExtCount
 	for k, val := range extCounts {
@@ -127,9 +118,9 @@ func stat(cmd *cobra.Command, args []string) {
 		return statsList[i].Count > statsList[j].Count
 	})
 
-	color.Cyan("╭─────────────────────────────────────────────────────────────╮")
-	color.Cyan("│               TOP FILE EXTENSIONS BREAKDOWN                 │")
-	color.Cyan("├─────────────────────────────────────────────────────────────┤")
+	ui.PrintBoxTop()
+	fmt.Printf(color.CyanString("│")+" %-59s "+color.CyanString("│\n"), color.HiWhiteString("TOP FILE EXTENSIONS BREAKDOWN"))
+	ui.PrintBoxDivider()
 	for i, file := range statsList {
 		if i == 10 {
 			break
@@ -138,18 +129,19 @@ func stat(cmd *cobra.Command, args []string) {
 		name := file.Name
 		count := file.Count
 		pct := (float64(count) / float64(totalFiles)) * 100
-		bar := renderStatsBar(pct)
+		bar := ui.RenderBar(pct, 18)
 		lineFormatted := fmt.Sprintf("  %-12s %s %5.1f%% (%d files)", name, bar, pct, count)
 		fmt.Printf(color.CyanString("│")+" %-69s "+color.CyanString("│\n"), lineFormatted)
 	}
-	color.Cyan("╰─────────────────────────────────────────────────────────────╯\n")
+	ui.PrintBoxBottom()
+	fmt.Println()
 
 	if listFiles && len(detectedSubProjects) > 0 {
-		color.Cyan("╭─────────────────────────────────────────────────────────────╮")
-		color.Cyan("│                    DETECTED ENVIRONMENTS                    │")
-		color.Cyan("├──────────────────────────────┬──────────────────────────────┤")
+		ui.PrintBoxTop()
+		fmt.Printf(color.CyanString("│")+" %-59s "+color.CyanString("│\n"), color.HiWhiteString("DETECTED ENVIRONMENTS"))
+		ui.PrintBoxDivider2Col()
 		fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-28s "+color.CyanString("│\n"), "Directory Path", "Framework / Stack")
-		color.Cyan("├──────────────────────────────┼──────────────────────────────┤")
+		ui.PrintBoxDivider2Col()
 		for path, framework := range detectedSubProjects {
 			relPath := path
 			if r, err := filepath.Rel(absPath, path); err == nil && r != "." {
@@ -157,24 +149,12 @@ func stat(cmd *cobra.Command, args []string) {
 			} else if r == "." {
 				relPath = "./"
 			}
-			if len(relPath) > 28 {
-				relPath = relPath[:25] + "..."
-			}
+			relPath = ui.Truncate(relPath, 28)
 			fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), relPath, color.HiGreenString(framework))
 		}
-		color.Cyan("╰──────────────────────────────┴──────────────────────────────╯\n")
+		ui.PrintBoxBottom()
+		fmt.Println()
 	}
-}
-
-func renderStatsBar(pct float64) string {
-	filled := int((pct / 100) * 18)
-	if filled > 18 {
-		filled = 18
-	}
-	if filled < 1 && pct > 0 {
-		filled = 1
-	}
-	return color.GreenString(strings.Repeat("█", filled)) + color.HiBlackString(strings.Repeat("░", 18-filled))
 }
 
 func analze(currentDir string) {
@@ -187,7 +167,7 @@ func analze(currentDir string) {
 	}
 
 	for _, dirEntry := range dirEntries {
-		if shoudldSkip(dirEntry.Name()) {
+		if fsutil.ShouldSkip(dirEntry.Name(), skippedList) {
 			continue
 		}
 
@@ -209,43 +189,14 @@ func analze(currentDir string) {
 			fileName := dirEntry.Name()
 			currentFramework := detectedSubProjects[currentDir]
 
-			switch fileName {
-			case "go.mod":
-				detectedSubProjects[currentDir] = "Go Lang"
-			case "next.config.js", "next.config.ts", "next.config.mjs":
-				detectedSubProjects[currentDir] = "Next.js"
-			case "app.json", "metro.config.js":
-				detectedSubProjects[currentDir] = "React Native"
-			case "requirements.txt", "pyproject.toml", "Pipfile":
-				detectedSubProjects[currentDir] = "Python"
-			case "CMakeLists.txt":
-				detectedSubProjects[currentDir] = "C++"
-			case "pom.xml", "build.gradle":
-				detectedSubProjects[currentDir] = "Java"
-			case "schema.prisma":
-				detectedSubProjects[currentDir] = "Prisma DB"
-			case "package.json":
-				if currentFramework == "" {
-					detectedSubProjects[currentDir] = "Node.js"
+			fw := detect.IdentifyFramework(fileName)
+			if fw != "" {
+				if fileName != "package.json" || currentFramework == "" {
+					detectedSubProjects[currentDir] = fw
 				}
 			}
 		}
 		totalEntries++
 		mu.Unlock()
 	}
-}
-
-func shoudldSkip(fileName string) bool {
-	for _, skipped := range skippedList {
-		if fileName == skipped {
-			return true
-		}
-	}
-
-	for _, skipped := range defaultSkippedList {
-		if fileName == skipped {
-			return true
-		}
-	}
-	return false
 }

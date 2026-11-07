@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
+	"github.com/V3DxNT/Ray/internal/detect"
+	"github.com/V3DxNT/Ray/internal/ui"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -18,23 +19,23 @@ import (
 var ignoreTemplates embed.FS
 
 type IgnorePlan struct {
-	TargetDir         string
-	DetectedStacks    []string
-	GitignoreContent  string
-	DockerContent     string
-	GitignoreRules    int
-	DockerRules       int
-	GitignoreExisted  bool
-	DockerExisted     bool
+	TargetDir        string
+	DetectedStacks   []string
+	GitignoreContent string
+	DockerContent    string
+	GitignoreRules   int
+	DockerRules      int
+	GitignoreExisted bool
+	DockerExisted    bool
 }
 
 var (
-	ignoreStacksFlag  []string
-	ignoreForce       bool
-	ignoreAppend      bool
-	ignoreGitOnly     bool
-	ignoreDockerOnly  bool
-	ignoreDryRun      bool
+	ignoreStacksFlag []string
+	ignoreForce      bool
+	ignoreAppend     bool
+	ignoreGitOnly    bool
+	ignoreDockerOnly bool
+	ignoreDryRun     bool
 )
 
 var ignoreCmd = &cobra.Command{
@@ -68,16 +69,23 @@ func runIgnore(cmd *cobra.Command, args []string) {
 	}
 
 	info, err := os.Stat(absPath)
-	if err != nil {
-		color.Red("Directory does not exist: %v", err)
-		return
-	}
-	if !info.IsDir() {
-		color.Red("Target path must be a directory")
+	if err != nil || !info.IsDir() {
+		color.Red("Target path must be an existing directory")
 		return
 	}
 
-	stacks := resolveIgnoreStacks(absPath, ignoreStacksFlag)
+	var stacks []string
+	if len(ignoreStacksFlag) > 0 {
+		for _, s := range ignoreStacksFlag {
+			cleaned := strings.ToLower(strings.TrimSpace(s))
+			if cleaned != "" {
+				stacks = append(stacks, cleaned)
+			}
+		}
+	} else {
+		stacks = detect.DetectStacks(absPath)
+	}
+
 	if len(stacks) == 0 {
 		stacks = []string{"base"}
 	}
@@ -103,72 +111,6 @@ func runIgnore(cmd *cobra.Command, args []string) {
 
 	fmt.Println()
 	color.HiGreen("✔ Ignore engine generation complete!")
-}
-
-func resolveIgnoreStacks(root string, manualStacks []string) []string {
-	if len(manualStacks) > 0 {
-		var res []string
-		for _, s := range manualStacks {
-			cleaned := strings.ToLower(strings.TrimSpace(s))
-			if cleaned != "" {
-				res = append(res, cleaned)
-			}
-		}
-		return res
-	}
-
-	stackSet := make(map[string]bool)
-
-	var components []DetectedComponent
-	scanSubprojects(root, root, 0, &components)
-
-	for _, c := range components {
-		st := strings.ToLower(c.Stack)
-		if strings.Contains(st, "go lang") {
-			stackSet["go"] = true
-		}
-		if strings.Contains(st, "node") || strings.Contains(st, "react") || strings.Contains(st, "next") || strings.Contains(st, "vite") {
-			stackSet["node"] = true
-		}
-		if strings.Contains(st, "python") {
-			stackSet["python"] = true
-		}
-		if strings.Contains(st, "rust") {
-			stackSet["rust"] = true
-		}
-		if strings.Contains(st, "java") {
-			stackSet["java"] = true
-		}
-		if strings.Contains(st, "c++") || strings.Contains(st, "cmake") {
-			stackSet["cpp"] = true
-		}
-	}
-
-	if fileExists(filepath.Join(root, "go.mod")) {
-		stackSet["go"] = true
-	}
-	if fileExists(filepath.Join(root, "package.json")) {
-		stackSet["node"] = true
-	}
-	if fileExists(filepath.Join(root, "requirements.txt")) || fileExists(filepath.Join(root, "pyproject.toml")) {
-		stackSet["python"] = true
-	}
-	if fileExists(filepath.Join(root, "Cargo.toml")) {
-		stackSet["rust"] = true
-	}
-	if fileExists(filepath.Join(root, "pom.xml")) || fileExists(filepath.Join(root, "build.gradle")) {
-		stackSet["java"] = true
-	}
-	if fileExists(filepath.Join(root, "CMakeLists.txt")) {
-		stackSet["cpp"] = true
-	}
-
-	var sorted []string
-	for k := range stackSet {
-		sorted = append(sorted, k)
-	}
-	sort.Strings(sorted)
-	return sorted
 }
 
 func buildIgnorePlan(root string, stacks []string) IgnorePlan {
@@ -327,24 +269,16 @@ func writeIgnoreTargetFile(targetFile, content string, existed, force, appendMod
 }
 
 func renderIgnorePlanBox(plan IgnorePlan) {
-	color.Cyan("╭─────────────────────────────────────────────────────────────╮")
-	color.Cyan("│                  POLYGLOT IGNORE GENERATOR                  │")
-	color.Cyan("├───────────────────────┬─────────────────────────────────────┤")
-
-	targetDir := plan.TargetDir
-	if len(targetDir) > 35 {
-		targetDir = "..." + targetDir[len(targetDir)-32:]
-	}
-	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Target Directory", color.HiWhiteString(targetDir))
+	ui.PrintBoxTop()
+	fmt.Printf(color.CyanString("│")+" %-59s "+color.CyanString("│\n"), color.HiWhiteString("POLYGLOT IGNORE GENERATOR"))
+	ui.PrintBoxDivider2ColWide()
+	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Target Directory", color.HiWhiteString(ui.Truncate(plan.TargetDir, 35)))
 
 	var stackNames []string
 	for _, s := range plan.DetectedStacks {
 		stackNames = append(stackNames, strings.ToUpper(s))
 	}
-	stackStr := strings.Join(stackNames, ", ")
-	if len(stackStr) > 35 {
-		stackStr = stackStr[:32] + "..."
-	}
+	stackStr := ui.Truncate(strings.Join(stackNames, ", "), 35)
 	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Detected Stacks", color.HiCyanString(stackStr))
 
 	targets := ".gitignore, .dockerignore"
@@ -366,6 +300,6 @@ func renderIgnorePlanBox(plan IgnorePlan) {
 		dockerRulesStr += " (Exists)"
 	}
 	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), ".dockerignore Status", color.HiWhiteString(dockerRulesStr))
-
-	color.Cyan("╰───────────────────────┴─────────────────────────────────────╯\n")
+	ui.PrintBoxBottom()
+	fmt.Println()
 }
