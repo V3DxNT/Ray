@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/V3DxNT/Ray/internal/fsutil"
+	"github.com/V3DxNT/Ray/internal/ui"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -73,13 +75,8 @@ func runClean(cmd *cobra.Command, args []string) {
 	}
 
 	info, err := os.Stat(absPath)
-	if err != nil {
-		color.Red("Path does not exist: %v", err)
-		return
-	}
-
-	if !info.IsDir() {
-		color.Red("Target path must be a directory")
+	if err != nil || !info.IsDir() {
+		color.Red("Target path must be an existing directory")
 		return
 	}
 
@@ -105,9 +102,11 @@ func runClean(cmd *cobra.Command, args []string) {
 	}()
 	wg.Wait()
 
-	dockerTarget := checkDockerReclaimable()
-	if dockerTarget != nil {
-		targets = append(targets, *dockerTarget)
+	if cleanIncludeDocker {
+		dockerTarget := checkDockerReclaimable()
+		if dockerTarget != nil {
+			targets = append(targets, *dockerTarget)
+		}
 	}
 
 	if len(targets) == 0 {
@@ -141,58 +140,55 @@ func printCleanHeader(path string) {
 }
 
 func renderCleanDashboard(targets []CleanTarget, totalSize int64) {
-	color.Cyan("╭─────────────────────────────────────────────────────────────╮")
-	color.Cyan("│                DETECTED CLEANUP CANDIDATES                  │")
-	color.Cyan("├─────────────────────────────────────────────────────────────┤")
-	summaryLine := fmt.Sprintf("Total Candidates: %d  │  Total Reclaimable: %s", len(targets), formatCleanBytes(totalSize))
+	ui.PrintBoxTop()
+	fmt.Printf(color.CyanString("│")+" %-59s "+color.CyanString("│\n"), color.HiWhiteString("DETECTED CLEANUP CANDIDATES"))
+	ui.PrintBoxDivider()
+	summaryLine := fmt.Sprintf("Total Candidates: %d  │  Total Reclaimable: %s", len(targets), ui.FormatBytes(totalSize))
 	fmt.Printf(color.CyanString("│")+" %-69s "+color.CyanString("│\n"), color.HiMagentaString(summaryLine))
-	color.Cyan("├─────────────────────────────────────────────────────────────┤")
+	ui.PrintBoxDivider()
 
 	for i, t := range targets {
-		badge := formatCategoryBadge(t.Category)
-		sizeStr := color.HiYellowString("%9s", formatCleanBytes(t.Size))
-		bar := renderSizeBar(t.Size, totalSize)
-		itemPath := t.Path
-		if len(itemPath) > 36 {
-			itemPath = "..." + itemPath[len(itemPath)-33:]
+		catTag := color.RedString("[DIR] ")
+		if t.Category == CategoryJunkFile {
+			catTag = color.YellowString("[JUNK]")
+		} else if t.Category == CategoryHeavyFile {
+			catTag = color.MagentaString("[FILE]")
+		} else if t.Category == CategoryDocker {
+			catTag = color.CyanString("[DOCK]")
 		}
 
-		line := fmt.Sprintf("%2d. %s %s %s  %s", i+1, badge, sizeStr, bar, color.WhiteString(itemPath))
-		fmt.Printf(color.CyanString("│")+" %-69s "+color.CyanString("│\n"), line)
-		if t.Description != "" {
-			descLine := fmt.Sprintf("    └── %s", color.HiBlackString(t.Description))
-			fmt.Printf(color.CyanString("│")+" %-69s "+color.CyanString("│\n"), descLine)
+		sizeStr := color.HiYellowString("%9s", ui.FormatBytes(t.Size))
+		bar := renderCleanBar(t.Size, totalSize)
+
+		displayPath := t.Path
+		if len(displayPath) > 34 {
+			displayPath = "..." + displayPath[len(displayPath)-31:]
 		}
+
+		fmt.Printf(color.CyanString("│")+"  %2d.  %s %s %s  %-34s "+color.CyanString("│\n"),
+			i+1, catTag, sizeStr, bar, color.HiWhiteString(displayPath))
+
+		descStr := fmt.Sprintf("└── %s", t.Description)
+		if len(descStr) > 59 {
+			descStr = descStr[:56] + "..."
+		}
+		fmt.Printf(color.CyanString("│")+"     %-65s "+color.CyanString("│\n"), color.HiBlackString(descStr))
 	}
-	color.Cyan("╰─────────────────────────────────────────────────────────────╯\n")
+
+	ui.PrintBoxBottom()
 }
 
-func formatCategoryBadge(cat CleanCategory) string {
-	switch cat {
-	case CategoryJunkDir:
-		return color.New(color.BgYellow, color.FgBlack).Sprint(" [DIR] ")
-	case CategoryJunkFile:
-		return color.New(color.BgRed, color.FgWhite).Sprint(" [JUNK] ")
-	case CategoryHeavyFile:
-		return color.New(color.BgCyan, color.FgBlack).Sprint(" [HEAVY] ")
-	case CategoryDocker:
-		return color.New(color.BgBlue, color.FgWhite).Sprint(" [DOCKER] ")
-	default:
-		return color.New(color.BgWhite, color.FgBlack).Sprint(" [ITEM] ")
-	}
-}
-
-func renderSizeBar(size, total int64) string {
+func renderCleanBar(size, total int64) string {
 	if total <= 0 {
-		return "░░░░░░░░░░"
+		return color.HiBlackString("░░░░░░░░")
 	}
 	pct := float64(size) / float64(total)
 	filled := int(pct * 10)
-	if filled > 10 {
-		filled = 10
-	}
 	if filled < 1 && size > 0 {
 		filled = 1
+	}
+	if filled > 10 {
+		filled = 10
 	}
 	return color.GreenString(strings.Repeat("█", filled)) + color.HiBlackString(strings.Repeat("░", 10-filled))
 }
@@ -202,9 +198,11 @@ func executeInteractiveClean(targets []CleanTarget) {
 	var deleted []CleanTarget
 	var totalFreed int64
 
-	for i := 0; i < len(targets); i++ {
-		item := targets[i]
+	fmt.Println()
+	color.Yellow("Commands: [y]es delete, [n]o cancel, [a]ll delete all remaining, [s]kip")
+	fmt.Println()
 
+	for i, item := range targets {
 		if cleanForce {
 			freed := performDeletion(item)
 			if freed > 0 {
@@ -215,7 +213,7 @@ func executeInteractiveClean(targets []CleanTarget) {
 		}
 
 		fmt.Printf("[%d/%d] Delete %s %s (%s)? [y/n/a/s]: ",
-			i+1, len(targets), item.Category, color.YellowString(item.Path), color.HiCyanString(formatCleanBytes(item.Size)))
+			i+1, len(targets), item.Category, color.YellowString(item.Path), color.HiCyanString(ui.FormatBytes(item.Size)))
 
 		input, err := reader.ReadString('\n')
 		if err != nil {
@@ -256,13 +254,13 @@ func executeInteractiveClean(targets []CleanTarget) {
 		return
 	}
 
-	color.Green("╭─────────────────────────────────────────────────────────────╮")
-	color.Green("│                    CLEANUP COMPLETE                         │")
-	color.Green("╰─────────────────────────────────────────────────────────────╯")
+	ui.PrintBoxTop()
+	fmt.Printf(color.GreenString("│")+" %-59s "+color.GreenString("│\n"), "CLEANUP COMPLETE")
+	ui.PrintBoxBottom()
 	for _, item := range deleted {
-		fmt.Printf("  ✔ Deleted: %s (%s)\n", item.Path, color.HiMagentaString(formatCleanBytes(item.Size)))
+		fmt.Printf("  ✔ Deleted: %s (%s)\n", item.Path, color.HiMagentaString(ui.FormatBytes(item.Size)))
 	}
-	fmt.Printf("\n🎉 Reclaimed Space: %s\n\n", color.HiGreenString(formatCleanBytes(totalFreed)))
+	fmt.Printf("\n🎉 Reclaimed Space: %s\n\n", color.HiGreenString(ui.FormatBytes(totalFreed)))
 }
 
 func performDeletion(item CleanTarget) int64 {
@@ -287,8 +285,13 @@ func scanCleanTargets(currentDir string, dirThreshold, fileThreshold int64, targ
 
 	for _, entry := range entries {
 		name := entry.Name()
-		if name == ".git" || isCleanSkipped(name, skips) {
+		if name == ".git" {
 			continue
+		}
+		for _, s := range skips {
+			if s == name {
+				continue
+			}
 		}
 
 		fullPath := filepath.Join(currentDir, name)
@@ -296,7 +299,7 @@ func scanCleanTargets(currentDir string, dirThreshold, fileThreshold int64, targ
 		if entry.IsDir() {
 			desc, isJunk := getJunkDirMetadata(name)
 			if isJunk {
-				dirSize := calculateCleanDirSize(fullPath)
+				dirSize := fsutil.CalculateDirSize(fullPath)
 				if dirSize >= dirThreshold {
 					mu.Lock()
 					*targets = append(*targets, CleanTarget{
@@ -309,43 +312,44 @@ func scanCleanTargets(currentDir string, dirThreshold, fileThreshold int64, targ
 					})
 					mu.Unlock()
 				}
-			} else {
-				select {
-				case sem <- struct{}{}:
-					wg.Add(1)
-					go func(p string) {
-						defer func() { <-sem }()
-						defer wg.Done()
-						scanCleanTargets(p, dirThreshold, fileThreshold, targets, mu, wg, sem, skips)
-					}(fullPath)
-				default:
-					scanCleanTargets(fullPath, dirThreshold, fileThreshold, targets, mu, wg, sem, skips)
-				}
+				continue
+			}
+
+			select {
+			case sem <- struct{}{}:
+				wg.Add(1)
+				go func(p string) {
+					defer func() { <-sem }()
+					defer wg.Done()
+					scanCleanTargets(p, dirThreshold, fileThreshold, targets, mu, wg, sem, skips)
+				}(fullPath)
+			default:
+				scanCleanTargets(fullPath, dirThreshold, fileThreshold, targets, mu, wg, sem, skips)
 			}
 		} else {
 			info, err := entry.Info()
 			if err != nil {
 				continue
 			}
+			fSize := info.Size()
 
-			desc, isJunkFile := getJunkFileMetadata(name)
-			if isJunkFile {
+			if desc, isJunk := getJunkFileMetadata(name); isJunk {
 				mu.Lock()
 				*targets = append(*targets, CleanTarget{
 					Path:        fullPath,
 					Name:        name,
-					Size:        info.Size(),
+					Size:        fSize,
 					Category:    CategoryJunkFile,
 					Description: desc,
 					IsDir:       false,
 				})
 				mu.Unlock()
-			} else if info.Size() >= fileThreshold {
+			} else if fSize >= fileThreshold {
 				mu.Lock()
 				*targets = append(*targets, CleanTarget{
 					Path:        fullPath,
 					Name:        name,
-					Size:        info.Size(),
+					Size:        fSize,
 					Category:    CategoryHeavyFile,
 					Description: "Heavy repository file",
 					IsDir:       false,
@@ -356,54 +360,34 @@ func scanCleanTargets(currentDir string, dirThreshold, fileThreshold int64, targ
 	}
 }
 
-func calculateCleanDirSize(dirPath string) int64 {
-	var total int64
-	entries, err := os.ReadDir(dirPath)
-	if err != nil {
-		return 0
-	}
-	for _, entry := range entries {
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		if entry.IsDir() {
-			total += calculateCleanDirSize(filepath.Join(dirPath, entry.Name()))
-		} else {
-			total += info.Size()
-		}
-	}
-	return total
-}
-
 func getJunkDirMetadata(name string) (string, bool) {
 	junkMap := map[string]string{
-		"node_modules":   "Node.js package dependencies",
-		".next":          "Next.js build cache and pages",
-		".nuxt":          "Nuxt.js build artifacts",
-		".turbo":         "Turborepo remote/local cache",
-		".cache":         "General build and tool cache",
-		"build":          "Compiled build artifacts",
-		"dist":           "Distribution release output",
-		"target":         "Rust / Java target build folder",
-		"bin":            "Binary executable artifacts",
-		"obj":            ".NET build intermediate objects",
-		"vendor":         "Vendored module dependencies",
-		"__pycache__":    "Python bytecode cache",
-		".pytest_cache":  "PyTest run cache",
-		".venv":          "Python virtual environment",
-		"venv":           "Python virtual environment",
-		"env":            "Virtual environment",
-		".gradle":        "Gradle build daemon & wrapper cache",
-		"Pods":           "Cocoapods iOS dependencies",
-		".dart_tool":     "Flutter / Dart build configuration",
-		".parcel-cache":  "Parcel bundler cache",
-		".svelte-kit":    "SvelteKit development output",
-		".terraform":     "Terraform provider plugins & modules",
-		".serverless":    "Serverless framework packaging",
-		".yarn":          "Yarn local cache & releases",
-		"coverage":       "Test coverage reports",
-		".nyc_output":    "NYC coverage instrumentation",
+		"node_modules":  "Node.js package dependencies",
+		".next":         "Next.js build cache and pages",
+		".nuxt":         "Nuxt.js build artifacts",
+		".turbo":        "Turborepo remote/local cache",
+		".cache":        "General build and tool cache",
+		"build":         "Compiled build artifacts",
+		"dist":          "Distribution release output",
+		"target":        "Rust / Java target build folder",
+		"bin":           "Binary executable artifacts",
+		"obj":           ".NET build intermediate objects",
+		"vendor":        "Vendored module dependencies",
+		"__pycache__":   "Python bytecode cache",
+		".pytest_cache": "PyTest run cache",
+		".venv":         "Python virtual environment",
+		"venv":          "Python virtual environment",
+		"env":           "Virtual environment",
+		".gradle":       "Gradle build daemon & wrapper cache",
+		"Pods":          "Cocoapods iOS dependencies",
+		".dart_tool":    "Flutter / Dart build configuration",
+		".parcel-cache": "Parcel bundler cache",
+		".svelte-kit":   "SvelteKit development output",
+		".terraform":    "Terraform provider plugins & modules",
+		".serverless":   "Serverless framework packaging",
+		".yarn":         "Yarn local cache & releases",
+		"coverage":      "Test coverage reports",
+		".nyc_output":   "NYC coverage instrumentation",
 	}
 
 	desc, ok := junkMap[name]
@@ -433,15 +417,6 @@ func getJunkFileMetadata(name string) (string, bool) {
 	}
 
 	return "", false
-}
-
-func isCleanSkipped(name string, skips []string) bool {
-	for _, s := range skips {
-		if s == name {
-			return true
-		}
-	}
-	return false
 }
 
 func checkDockerReclaimable() *CleanTarget {
@@ -522,17 +497,4 @@ func cleanDockerResources() int64 {
 
 	color.Green("  ✔ Docker cleanup complete.")
 	return 1
-}
-
-func formatCleanBytes(b int64) string {
-	const unit = 1024
-	if b < unit {
-		return fmt.Sprintf("%d B", b)
-	}
-	div, exp := int64(unit), 0
-	for n := b / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.2f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
