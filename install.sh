@@ -21,10 +21,10 @@ else
   exit 1
 fi
 
-if [ -f "cmd/main.go" ] && [ -f "go.mod" ]; then
+if [ -f "main.go" ] && [ -f "go.mod" ]; then
   echo "Local repository detected. Building directly..."
 
-  GOOS=$GOOS_VAR GOARCH=$GOARCH_VAR go build -o ray cmd/main.go
+  GOOS=$GOOS_VAR GOARCH=$GOARCH_VAR go build -o ray main.go
 
   sudo mv ray /usr/local/bin/ray
   sudo chmod +x /usr/local/bin/ray
@@ -33,11 +33,11 @@ else
   echo "No local repository found. Downloading ray..."
 
   TMP_DIR=$(mktemp -d)
-  git clone --depth 1 https://github.com/V3DxNT/ray.git "$TMP_DIR"
+  git clone --depth 1 https://github.com/V3DxNT/Ray.git "$TMP_DIR"
 
   cd "$TMP_DIR" || exit
 
-  GOOS=$GOOS_VAR GOARCH=$GOARCH_VAR go build -o ray cmd/main.go
+  GOOS=$GOOS_VAR GOARCH=$GOARCH_VAR go build -o ray main.go
 
   sudo mv ray /usr/local/bin/ray
   sudo chmod +x /usr/local/bin/ray
