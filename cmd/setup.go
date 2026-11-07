@@ -10,6 +10,10 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/V3DxNT/Ray/internal/detect"
+	"github.com/V3DxNT/Ray/internal/fsutil"
+	"github.com/V3DxNT/Ray/internal/system"
+	"github.com/V3DxNT/Ray/internal/ui"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -86,13 +90,8 @@ func runSetup(cmd *cobra.Command, args []string) {
 	}
 
 	info, err := os.Stat(absPath)
-	if err != nil {
-		color.Red("Path does not exist: %v", err)
-		return
-	}
-
-	if !info.IsDir() {
-		color.Red("Target path must be a directory")
+	if err != nil || !info.IsDir() {
+		color.Red("Target path must be an existing directory")
 		return
 	}
 
@@ -118,11 +117,12 @@ func runSetup(cmd *cobra.Command, args []string) {
 	renderSetupPlanBox(plan)
 
 	if len(plan.MissingTools) == 0 && len(plan.DepTasks) == 0 {
-		color.Green("╭─────────────────────────────────────────────────────────────╮")
-		color.Green("│                    ALL SYSTEMS READY                        │")
-		color.Green("├─────────────────────────────────────────────────────────────┤")
+		ui.PrintBoxTop()
+		fmt.Printf(color.GreenString("│")+" %-59s "+color.GreenString("│\n"), "ALL SYSTEMS READY")
+		ui.PrintBoxDivider()
 		fmt.Printf(color.GreenString("│")+" %-69s "+color.GreenString("│\n"), "🎉 Codebase is fully provisioned! No missing tools or deps.")
-		color.Green("╰─────────────────────────────────────────────────────────────╯\n")
+		ui.PrintBoxBottom()
+		fmt.Println()
 		return
 	}
 
@@ -154,13 +154,13 @@ func runSetup(cmd *cobra.Command, args []string) {
 
 func buildSetupPlan(root string) SetupPlan {
 	osName := runtime.GOOS
-	pkgMgr, pkgReady := detectPackageManager(osName)
+	pkgMgr, pkgReady := system.DetectPackageManager(osName)
 
-	var components []DetectedComponent
-	scanSubprojects(root, root, 0, &components)
+	var components []detect.Component
+	detect.ScanSubprojects(root, root, 0, &components)
 
 	if len(components) == 0 {
-		components = append(components, DetectedComponent{
+		components = append(components, detect.Component{
 			RelativePath: "./",
 			Stack:        "Generic Codebase",
 			Anchor:       "Directory",
@@ -170,7 +170,7 @@ func buildSetupPlan(root string) SetupPlan {
 
 	neededToolNames := make(map[string]string)
 
-	if fileExists(filepath.Join(root, ".git")) {
+	if fsutil.DirExists(filepath.Join(root, ".git")) {
 		neededToolNames["git"] = "Version Control"
 	}
 
@@ -196,13 +196,13 @@ func buildSetupPlan(root string) SetupPlan {
 			neededToolNames["npm"] = "Node Package Manager"
 			if !c.DepsOk && !setupSystemOnly {
 				cmdStr := "npm install"
-				if fileExists(filepath.Join(subDir, "yarn.lock")) {
+				if fsutil.FileExists(filepath.Join(subDir, "yarn.lock")) {
 					neededToolNames["yarn"] = "Yarn Package Manager"
 					cmdStr = "yarn install"
-				} else if fileExists(filepath.Join(subDir, "pnpm-lock.yaml")) {
+				} else if fsutil.FileExists(filepath.Join(subDir, "pnpm-lock.yaml")) {
 					neededToolNames["pnpm"] = "pnpm Package Manager"
 					cmdStr = "pnpm install"
-				} else if fileExists(filepath.Join(subDir, "bun.lockb")) || fileExists(filepath.Join(subDir, "bun.lock")) {
+				} else if fsutil.FileExists(filepath.Join(subDir, "bun.lockb")) || fsutil.FileExists(filepath.Join(subDir, "bun.lock")) {
 					neededToolNames["bun"] = "Bun Runtime"
 					cmdStr = "bun install"
 				}
@@ -227,7 +227,7 @@ func buildSetupPlan(root string) SetupPlan {
 			neededToolNames["python3"] = "Python Runtime"
 			neededToolNames["pip3"] = "Python Package Installer"
 			reqFile := filepath.Join(subDir, "requirements.txt")
-			if fileExists(reqFile) && !setupSystemOnly {
+			if fsutil.FileExists(reqFile) && !setupSystemOnly {
 				depTasks = append(depTasks, ProjectDepTask{
 					SubprojectPath: c.RelativePath,
 					Manager:        "pip",
@@ -261,7 +261,7 @@ func buildSetupPlan(root string) SetupPlan {
 			}
 		}
 
-		if fileExists(filepath.Join(subDir, "k8s")) || fileExists(filepath.Join(subDir, "kubernetes")) || fileExists(filepath.Join(subDir, "helm")) {
+		if fsutil.DirExists(filepath.Join(subDir, "k8s")) || fsutil.DirExists(filepath.Join(subDir, "kubernetes")) || fsutil.DirExists(filepath.Join(subDir, "helm")) {
 			neededToolNames["kubectl"] = "Kubernetes CLI"
 		}
 	}
@@ -293,43 +293,6 @@ func buildSetupPlan(root string) SetupPlan {
 	}
 }
 
-func detectPackageManager(osName string) (string, bool) {
-	switch osName {
-	case "darwin":
-		if _, err := exec.LookPath("brew"); err == nil {
-			return "Homebrew (brew)", true
-		}
-		return "Homebrew", false
-	case "linux":
-		if _, err := exec.LookPath("apt-get"); err == nil {
-			return "APT (apt-get)", true
-		}
-		if _, err := exec.LookPath("dnf"); err == nil {
-			return "DNF", true
-		}
-		if _, err := exec.LookPath("pacman"); err == nil {
-			return "Pacman", true
-		}
-		if _, err := exec.LookPath("yum"); err == nil {
-			return "YUM", true
-		}
-		return "APT", false
-	case "windows":
-		if _, err := exec.LookPath("winget"); err == nil {
-			return "WinGet", true
-		}
-		if _, err := exec.LookPath("choco"); err == nil {
-			return "Chocolatey", true
-		}
-		if _, err := exec.LookPath("scoop"); err == nil {
-			return "Scoop", true
-		}
-		return "WinGet / Chocolatey", false
-	default:
-		return "Package Manager", true
-	}
-}
-
 func inspectSetupTool(name, context, osName, pkgMgr string) SetupTool {
 	cmdName := name
 	if strings.Contains(name, " ") {
@@ -349,13 +312,13 @@ func inspectSetupTool(name, context, osName, pkgMgr string) SetupTool {
 		}
 		out, err := exec.Command(path, args...).CombinedOutput()
 		if err == nil {
-			ver = cleanVersionOutput(string(out))
+			ver = system.CleanVersion(string(out))
 		} else {
 			ver = "Installed"
 		}
 	}
 
-	installCmd, estMB := getInstallRecipe(name, osName, pkgMgr)
+	installCmd, estMB := system.GetInstallRecipe(name, osName, pkgMgr)
 
 	return SetupTool{
 		Name:        name,
@@ -363,119 +326,15 @@ func inspectSetupTool(name, context, osName, pkgMgr string) SetupTool {
 		Version:     ver,
 		InstallCmd:  installCmd,
 		EstimatedMB: estMB,
-		Category:    categorizeTool(name),
+		Category:    system.CategorizeTool(name),
 		RequiredFor: context,
 	}
 }
 
-func categorizeTool(name string) string {
-	switch name {
-	case "go", "node", "python3", "java", "rustc":
-		return "Compiler / Runtime"
-	case "npm", "yarn", "pnpm", "bun", "pip3", "cargo":
-		return "Package Manager"
-	case "docker", "docker compose":
-		return "Container System"
-	case "git", "kubectl", "cmake", "make", "expo", "adb", "npx":
-		return "Developer CLI"
-	default:
-		return "Utility"
-	}
-}
-
-func getInstallRecipe(name, osName, pkgMgr string) (string, int) {
-	if osName == "darwin" {
-		switch name {
-		case "go":
-			return "brew install go", 250
-		case "node", "npm", "npx":
-			return "brew install node", 120
-		case "yarn":
-			return "npm install -g yarn", 15
-		case "pnpm":
-			return "brew install pnpm", 25
-		case "bun":
-			return "curl -fsSL https://bun.sh/install | bash", 40
-		case "docker", "docker compose":
-			return "brew install --cask docker", 1200
-		case "python3", "pip3":
-			return "brew install python", 180
-		case "rustc", "cargo":
-			return "brew install rust", 320
-		case "java":
-			return "brew install openjdk", 350
-		case "cmake":
-			return "brew install cmake", 85
-		case "make":
-			return "xcode-select --install", 200
-		case "git":
-			return "brew install git", 65
-		case "kubectl":
-			return "brew install kubectl", 60
-		case "expo":
-			return "npm install -g expo-cli", 45
-		case "adb":
-			return "brew install --cask android-platform-tools", 95
-		default:
-			return "brew install " + name, 50
-		}
-	} else if osName == "linux" {
-		switch name {
-		case "go":
-			return "sudo apt-get install -y golang-go", 240
-		case "node", "npm", "npx":
-			return "sudo apt-get install -y nodejs npm", 110
-		case "yarn":
-			return "npm install -g yarn", 15
-		case "pnpm":
-			return "npm install -g pnpm", 25
-		case "bun":
-			return "curl -fsSL https://bun.sh/install | bash", 40
-		case "docker", "docker compose":
-			return "sudo apt-get install -y docker.io docker-compose", 900
-		case "python3", "pip3":
-			return "sudo apt-get install -y python3 python3-pip", 140
-		case "rustc", "cargo":
-			return "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh", 300
-		case "java":
-			return "sudo apt-get install -y default-jdk", 320
-		case "cmake":
-			return "sudo apt-get install -y cmake", 75
-		case "make":
-			return "sudo apt-get install -y build-essential", 180
-		case "git":
-			return "sudo apt-get install -y git", 50
-		case "kubectl":
-			return "sudo apt-get install -y kubectl", 55
-		case "expo":
-			return "npm install -g expo-cli", 45
-		case "adb":
-			return "sudo apt-get install -y adb", 80
-		default:
-			return "sudo apt-get install -y " + name, 50
-		}
-	} else {
-		switch name {
-		case "go":
-			return "winget install GoLang.Go", 250
-		case "node", "npm", "npx":
-			return "winget install OpenJS.NodeJS", 120
-		case "docker", "docker compose":
-			return "winget install Docker.DockerDesktop", 1500
-		case "python3", "pip3":
-			return "winget install Python.Python.3", 160
-		case "git":
-			return "winget install Git.Git", 70
-		default:
-			return "winget install " + name, 50
-		}
-	}
-}
-
 func renderPrerequisitesBox(plan SetupPlan) {
-	color.Cyan("╭─────────────────────────────────────────────────────────────╮")
-	color.Cyan("│                DETECTED STACK & PREREQUISITES               │")
-	color.Cyan("├───────────────────────┬─────────────────────────────────────┤")
+	ui.PrintBoxTop()
+	fmt.Printf(color.CyanString("│")+" %-59s "+color.CyanString("│\n"), color.HiWhiteString("DETECTED STACK & PREREQUISITES"))
+	ui.PrintBoxDivider2ColWide()
 	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Host OS / Arch", color.HiYellowString(plan.OS+" / "+runtime.GOARCH))
 
 	pkgStatus := color.HiGreenString(plan.PackageManager + " (Ready)")
@@ -487,53 +346,49 @@ func renderPrerequisitesBox(plan SetupPlan) {
 	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Installed Toolchains", color.HiWhiteString("%d Ready", len(plan.ReadyTools)))
 	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Missing Toolchains", color.HiRedString("%d Required", len(plan.MissingTools)))
 	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Pending Dep Tasks", color.HiMagentaString("%d Subproject(s)", len(plan.DepTasks)))
-	color.Cyan("╰───────────────────────┴─────────────────────────────────────╯\n")
+	ui.PrintBoxBottom()
+	fmt.Println()
 }
 
 func renderSetupPlanBox(plan SetupPlan) {
-	color.Cyan("╭─────────────────────────────────────────────────────────────╮")
-	color.Cyan("│               SYSTEM REQUIREMENTS & AUTOMATION              │")
-	color.Cyan("├──────────┬──────────────────┬──────────┬────────────────────┤")
+	ui.PrintBoxTop()
+	fmt.Printf(color.CyanString("│")+" %-59s "+color.CyanString("│\n"), color.HiWhiteString("SYSTEM REQUIREMENTS & AUTOMATION"))
+	ui.PrintBoxDivider4Col()
 	fmt.Printf(color.CyanString("│")+" %-8s "+color.CyanString("│")+" %-16s "+color.CyanString("│")+" %-8s "+color.CyanString("│")+" %-18s "+color.CyanString("│\n"), "Status", "Tool / Action", "Size (MB)", "Execution Recipe")
-	color.Cyan("├──────────┼──────────────────┼──────────┼────────────────────┤")
+	ui.PrintBoxDivider4Col()
 
 	for _, t := range plan.ReadyTools {
 		statusStr := color.GreenString("  ✅    ")
-		nameStr := color.HiWhiteString("%-16s", t.Name)
+		nameStr := color.HiWhiteString("%-16s", ui.Truncate(t.Name, 16))
 		sizeStr := color.HiBlackString("%-8s", "Cached")
-		recipeStr := color.HiBlackString("%-18s", t.Version)
+		recipeStr := color.HiBlackString("%-18s", ui.Truncate(t.Version, 18))
 		fmt.Printf(color.CyanString("│")+"%s"+color.CyanString("│")+" %-16s "+color.CyanString("│")+" %-8s "+color.CyanString("│")+" %-18s "+color.CyanString("│\n"),
 			statusStr, nameStr, sizeStr, recipeStr)
 	}
 
 	for _, t := range plan.MissingTools {
 		statusStr := color.RedString("  ❌    ")
-		nameStr := color.HiRedString("%-16s", t.Name)
+		nameStr := color.HiRedString("%-16s", ui.Truncate(t.Name, 16))
 		sizeStr := color.YellowString("~%d MB", t.EstimatedMB)
-		recipeStr := t.InstallCmd
-		if len(recipeStr) > 18 {
-			recipeStr = recipeStr[:15] + "..."
-		}
+		recipeStr := ui.Truncate(t.InstallCmd, 18)
 		fmt.Printf(color.CyanString("│")+"%s"+color.CyanString("│")+" %-16s "+color.CyanString("│")+" %-8s "+color.CyanString("│")+" %-18s "+color.CyanString("│\n"),
 			statusStr, nameStr, sizeStr, color.HiCyanString("%-18s", recipeStr))
 	}
 
 	for _, d := range plan.DepTasks {
 		statusStr := color.YellowString("  📦    ")
-		nameStr := color.HiYellowString("%-16s", d.Manager)
+		nameStr := color.HiYellowString("%-16s", ui.Truncate(d.Manager, 16))
 		sizeStr := color.HiBlackString("%-8s", "Varies")
-		recipeStr := d.Command
-		if len(recipeStr) > 18 {
-			recipeStr = recipeStr[:15] + "..."
-		}
+		recipeStr := ui.Truncate(d.Command, 18)
 		fmt.Printf(color.CyanString("│")+"%s"+color.CyanString("│")+" %-16s "+color.CyanString("│")+" %-8s "+color.CyanString("│")+" %-18s "+color.CyanString("│\n"),
 			statusStr, nameStr, sizeStr, color.HiWhiteString("%-18s", recipeStr))
 	}
 
-	color.Cyan("├─────────────────────────────────────────────────────────────┤")
+	ui.PrintBoxDivider()
 	spaceStr := fmt.Sprintf("Estimated Total Download Space Required: ~%d MB", plan.TotalSpaceMB)
 	fmt.Printf(color.CyanString("│")+" %-69s "+color.CyanString("│\n"), color.HiYellowString(spaceStr))
-	color.Cyan("╰─────────────────────────────────────────────────────────────╯\n")
+	ui.PrintBoxBottom()
+	fmt.Println()
 }
 
 func executeSetupPlan(plan *SetupPlan) {
@@ -608,46 +463,34 @@ func ensurePackageManagerReady(plan *SetupPlan) bool {
 	proceed := setupAutoConfirm
 	if !proceed {
 		reader := bufio.NewReader(os.Stdin)
-		fmt.Printf("Install %s now using the CLI? [y/N]: ", desc)
-		input, err := reader.ReadString('\n')
+		fmt.Print("Install missing package manager now? [y/N]: ")
+		in, err := reader.ReadString('\n')
 		if err != nil {
 			return false
 		}
-		input = strings.TrimSpace(strings.ToLower(input))
-		proceed = input == "y" || input == "yes"
+		in = strings.TrimSpace(strings.ToLower(in))
+		proceed = in == "y" || in == "yes"
 	}
 
 	if !proceed {
-		color.Yellow("Skipped installing %s. Tool installations that rely on it may fail.", desc)
+		color.Red("Cannot install system toolchains without package manager.")
 		return false
 	}
 
-	color.Cyan("▶ Installing %s...", desc)
-	var cmd *exec.Cmd
-	if plan.OS == "darwin" {
-		cmd = exec.Command("/bin/bash", "-c", recipe)
-	} else if plan.OS == "windows" {
-		cmd = exec.Command("powershell", "-Command", recipe)
-	} else {
-		parts := strings.Fields(recipe)
-		cmd = exec.Command(parts[0], parts[1:]...)
+	fmt.Printf("Running: %s\n", recipe)
+	cmd := exec.Command("bash", "-c", recipe)
+	if plan.OS == "windows" {
+		cmd = exec.Command("powershell", "-c", recipe)
 	}
-
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-	err := cmd.Run()
-	if err != nil {
-		color.Red("✖ Failed to install package manager: %v", err)
+	if err := cmd.Run(); err != nil {
+		color.Red("Failed to install package manager: %v", err)
 		return false
-	}
-
-	if plan.OS == "darwin" {
-		_ = os.Setenv("PATH", os.Getenv("PATH")+":/opt/homebrew/bin:/usr/local/bin")
 	}
 
 	plan.PkgMgrReady = true
-	color.Green("✔ %s successfully installed!", desc)
+	color.Green("✔ Package manager successfully installed!")
 	return true
 }
 
@@ -655,52 +498,45 @@ func getPackageManagerInstallRecipe(osName string) (string, string) {
 	switch osName {
 	case "darwin":
 		return `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`, "Homebrew"
-	case "windows":
-		return `Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))`, "Chocolatey"
 	case "linux":
-		return "sudo apt-get update && sudo apt-get install -y software-properties-common", "APT"
+		return "sudo apt-get update && sudo apt-get install -y build-essential curl", "APT (Debian/Ubuntu)"
+	case "windows":
+		return "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))", "Chocolatey"
 	default:
-		return "", ""
+		return "", "Package Manager"
 	}
 }
 
 func renderSetupReportBox(plan SetupPlan) {
-	color.Cyan("╭─────────────────────────────────────────────────────────────╮")
-	color.Cyan("│                  SETUP INSTALLATION REPORT                  │")
-	color.Cyan("├───────────────────────┬──────────┬──────────────────────────┤")
-	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-8s "+color.CyanString("│")+" %-24s "+color.CyanString("│\n"), "Component / Tool", "Status", "Result Details")
-	color.Cyan("├───────────────────────┼──────────┼──────────────────────────┤")
+	ui.PrintBoxTop()
+	fmt.Printf(color.CyanString("│")+" %-59s "+color.CyanString("│\n"), color.HiWhiteString("SETUP EXECUTION REPORT"))
+	ui.PrintBoxDivider2ColWide()
 
+	toolsSuccess := 0
 	for _, t := range plan.MissingTools {
-		statusStr := color.GreenString("  ✅    ")
-		detailStr := color.HiGreenString("Successfully Installed")
-		if t.InstallState == "Failed" {
-			statusStr = color.RedString("  ❌    ")
-			detailStr = color.HiRedString("Installation Failed")
-		} else if t.InstallState == "Skipped" {
-			statusStr = color.YellowString("  ↷    ")
-			detailStr = color.YellowString("Skipped")
+		if t.InstallState == "Installed" {
+			toolsSuccess++
 		}
-		fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+"%s"+color.CyanString("│")+" %-33s "+color.CyanString("│\n"),
-			color.HiWhiteString(t.Name), statusStr, detailStr)
 	}
 
+	depsSuccess := 0
 	for _, d := range plan.DepTasks {
-		statusStr := color.GreenString("  ✅    ")
-		detailStr := color.HiGreenString("Dependencies Synced")
-		if !d.Success {
-			statusStr = color.RedString("  ❌    ")
-			detailStr = color.HiRedString("Failed: " + d.Command)
+		if d.Success {
+			depsSuccess++
 		}
-		taskName := d.Manager + " (" + d.SubprojectPath + ")"
-		if len(taskName) > 21 {
-			taskName = taskName[:18] + "..."
-		}
-		fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+"%s"+color.CyanString("│")+" %-33s "+color.CyanString("│\n"),
-			color.HiWhiteString(taskName), statusStr, detailStr)
 	}
 
-	color.Cyan("├─────────────────────────────────────────────────────────────┤")
-	fmt.Printf(color.CyanString("│")+" %-69s "+color.CyanString("│\n"), color.GreenString("🎉 Setup cycle complete. Run 'ray doctor' to confirm readiness!"))
-	color.Cyan("╰─────────────────────────────────────────────────────────────╯\n")
+	toolReport := fmt.Sprintf("%d of %d installed", toolsSuccess, len(plan.MissingTools))
+	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "System Toolchains", color.HiGreenString(toolReport))
+
+	depReport := fmt.Sprintf("%d of %d synced", depsSuccess, len(plan.DepTasks))
+	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Dependency Tasks", color.HiGreenString(depReport))
+
+	status := color.HiGreenString("Complete & Operational")
+	if toolsSuccess < len(plan.MissingTools) || depsSuccess < len(plan.DepTasks) {
+		status = color.HiYellowString("Completed with Warnings")
+	}
+	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Execution Status", status)
+	ui.PrintBoxBottom()
+	fmt.Println()
 }
