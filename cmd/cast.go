@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/V3DxNT/Ray/internal/fsutil"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -17,7 +18,6 @@ var castCmd = &cobra.Command{
 	Run:   runCast,
 }
 
-var defaultSkips = []string{"node_modules", ".git", "data", "build", ".next"}
 var skipDirs []string
 var showAll bool = false
 var outputFile string
@@ -86,7 +86,7 @@ func walk(targetPath string, prefix string, w io.Writer) {
 	}
 
 	for i, file := range dir {
-		if !showAll && shouldSkip(file.Name()) {
+		if !showAll && fsutil.ShouldSkip(file.Name(), skipDirs) {
 			continue
 		}
 		isLast := i == len(dir)-1
@@ -109,18 +109,4 @@ func walk(targetPath string, prefix string, w io.Writer) {
 			}
 		}
 	}
-}
-
-func shouldSkip(fileName string) bool {
-	for _, s := range defaultSkips {
-		if s == fileName {
-			return true
-		}
-	}
-	for _, s := range skipDirs {
-		if s == fileName {
-			return true
-		}
-	}
-	return false
 }

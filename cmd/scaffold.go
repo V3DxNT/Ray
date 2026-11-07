@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/V3DxNT/Ray/internal/ui"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -527,11 +528,11 @@ func executeScaffolding(report ScaffoldReport) ScaffoldReport {
 }
 
 func renderScaffoldPlanBox(plan ScaffoldReport, source string) {
-	color.Cyan("╭─────────────────────────────────────────────────────────────╮")
-	color.Cyan("│                  CODEBASE SCAFFOLD GENERATOR                │")
-	color.Cyan("├───────────────────────┬─────────────────────────────────────┤")
+	ui.PrintBoxTop()
+	fmt.Printf(color.CyanString("│")+" %-59s "+color.CyanString("│\n"), color.HiWhiteString("CODEBASE SCAFFOLD GENERATOR"))
+	ui.PrintBoxDivider2ColWide()
 
-	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Blueprint Source", color.HiYellowString(source))
+	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Blueprint Source", color.HiYellowString(ui.Truncate(source, 35)))
 
 	destLabel := plan.TargetRoot
 	if plan.TargetRoot == "." {
@@ -539,34 +540,23 @@ func renderScaffoldPlanBox(plan ScaffoldReport, source string) {
 	} else {
 		destLabel = plan.TargetRoot + " (New Subfolder)"
 	}
-	if len(destLabel) > 35 {
-		destLabel = destLabel[:32] + "..."
-	}
-	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Target Destination", color.HiWhiteString(destLabel))
+	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Target Destination", color.HiWhiteString(ui.Truncate(destLabel, 35)))
 
-	stackStr := plan.Stack
-	if len(stackStr) > 35 {
-		stackStr = stackStr[:32] + "..."
-	}
-	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Architecture Stack", color.HiCyanString(stackStr))
-
-	dbStr := plan.Database
-	if len(dbStr) > 35 {
-		dbStr = dbStr[:32] + "..."
-	}
-	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Database / ORM", color.HiMagentaString(dbStr))
+	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Architecture Stack", color.HiCyanString(ui.Truncate(plan.Stack, 35)))
+	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Database / ORM", color.HiMagentaString(ui.Truncate(plan.Database, 35)))
 
 	dirLabel := fmt.Sprintf("%d Directories", plan.CreatedDirs)
 	fileLabel := fmt.Sprintf("%d Files (~%d lines)", plan.CreatedFiles, plan.TotalLines)
 	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Planned Directories", color.HiWhiteString(dirLabel))
 	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Planned Files", color.HiGreenString(fileLabel))
-	color.Cyan("╰───────────────────────┴─────────────────────────────────────╯\n")
+	ui.PrintBoxBottom()
+	fmt.Println()
 }
 
 func renderScaffoldReportBox(report ScaffoldReport) {
-	color.Cyan("╭─────────────────────────────────────────────────────────────╮")
-	color.Cyan("│                SCAFFOLD EXECUTION REPORT                    │")
-	color.Cyan("├───────────────────────┬─────────────────────────────────────┤")
+	ui.PrintBoxTop()
+	fmt.Printf(color.CyanString("│")+" %-59s "+color.CyanString("│\n"), color.HiWhiteString("SCAFFOLD EXECUTION REPORT"))
+	ui.PrintBoxDivider2ColWide()
 
 	absRoot, _ := filepath.Abs(report.TargetRoot)
 	if len(absRoot) > 35 {
@@ -577,12 +567,12 @@ func renderScaffoldReportBox(report ScaffoldReport) {
 	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Directories Created", color.HiWhiteString("%d directories", report.CreatedDirs))
 	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Files Written", color.HiGreenString("%d files", report.CreatedFiles))
 
-	sizeKB := float64(report.TotalBytes) / 1024.0
-	codeSummary := fmt.Sprintf("%d lines (%.1f KB)", report.TotalLines, sizeKB)
+	codeSummary := fmt.Sprintf("%d lines (%s)", report.TotalLines, ui.FormatBytes(report.TotalBytes))
 	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Total Code Generated", color.HiWhiteString(codeSummary))
 
 	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Execution Status", color.HiGreenString("✔ Complete & Ready"))
-	color.Cyan("╰───────────────────────┴─────────────────────────────────────╯\n")
+	ui.PrintBoxBottom()
+	fmt.Println()
 
 	color.HiGreen("✔ Architecture scaffolding successfully applied!")
 	if report.TargetRoot != "." {

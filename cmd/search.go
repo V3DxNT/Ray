@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/V3DxNT/Ray/internal/fsutil"
+	"github.com/V3DxNT/Ray/internal/ui"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -20,11 +22,6 @@ var targets []string
 var searchOnlyFirst bool
 var searchShowAll bool
 var searchSkipDirs []string
-
-var defaultSearchSkips = []string{
-	".git",
-	"node_modules",
-}
 
 func init() {
 	searchCmd.Flags().BoolVarP(&searchOnlyFirst, "first", "f", false, "Stop search on first exact occurrence")
@@ -93,13 +90,14 @@ func renderSearchBox(title string, items []string, notice string) {
 		padRight = 1
 	}
 
-	color.Cyan("╭─────────────────────────────────────────────────────────────╮")
+	ui.PrintBoxTop()
 	fmt.Printf(color.CyanString("│")+"%s%s%s"+color.CyanString("│\n"), strings.Repeat(" ", padLeft), color.HiWhiteString(title), strings.Repeat(" ", padRight))
-	color.Cyan("├─────────────────────────────────────────────────────────────┤")
+	ui.PrintBoxDivider()
 
 	if notice != "" && len(items) == 0 {
 		fmt.Printf(color.CyanString("│")+" %-69s "+color.CyanString("│\n"), notice)
-		color.Cyan("╰─────────────────────────────────────────────────────────────╯\n")
+		ui.PrintBoxBottom()
+		fmt.Println()
 		return
 	}
 
@@ -116,7 +114,8 @@ func renderSearchBox(title string, items []string, notice string) {
 		fmt.Printf(color.CyanString("│")+" %-69s "+color.CyanString("│\n"), color.HiBlackString("  "+notice))
 	}
 
-	color.Cyan("╰─────────────────────────────────────────────────────────────╯\n")
+	ui.PrintBoxBottom()
+	fmt.Println()
 }
 
 func hunt(currentDir string, exactMatches, similarMatches *[]string, seenExact, seenSimilar map[string]bool) {
@@ -131,7 +130,7 @@ func hunt(currentDir string, exactMatches, similarMatches *[]string, seenExact, 
 
 	for _, file := range dir {
 		name := file.Name()
-		if isSearchSkipped(name) {
+		if fsutil.ShouldSkip(name, searchSkipDirs) {
 			continue
 		}
 
@@ -171,18 +170,4 @@ func checkTargetMatch(filename string) (bool, bool) {
 		}
 	}
 	return false, false
-}
-
-func isSearchSkipped(name string) bool {
-	for _, s := range defaultSearchSkips {
-		if s == name {
-			return true
-		}
-	}
-	for _, s := range searchSkipDirs {
-		if s == name {
-			return true
-		}
-	}
-	return false
 }
