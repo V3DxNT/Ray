@@ -4,15 +4,14 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
-	"sync/atomic"
-	"time"
 
+	"github.com/V3DxNT/Ray/internal/fsutil"
+	"github.com/V3DxNT/Ray/internal/ui"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -60,22 +59,6 @@ var (
 	envSkipDirs   []string
 )
 
-var defaultEnvSkips = []string{
-	".git",
-	"node_modules",
-	"dist",
-	"build",
-	".next",
-	".nuxt",
-	"vendor",
-	"target",
-	"bin",
-	"obj",
-	"data",
-	".idea",
-	".vscode",
-}
-
 var envCmd = &cobra.Command{
 	Use:   "env [path]",
 	Short: "Audit repository for environment variable references and missing .env entries",
@@ -104,12 +87,8 @@ func runEnvAudit(cmd *cobra.Command, args []string) {
 	}
 
 	info, err := os.Stat(absPath)
-	if err != nil {
-		color.Red("Directory does not exist: %v", err)
-		return
-	}
-	if !info.IsDir() {
-		color.Red("Target path must be a directory")
+	if err != nil || !info.IsDir() {
+		color.Red("Target path must be an existing directory")
 		return
 	}
 
@@ -169,47 +148,27 @@ func PerformEnvAudit(root string, envFileName string, customSkips []string, sile
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 64)
-	var filesScanned int64
 
 	detectedVars := make(map[string][]EnvUsageOccurrence)
 
-	stopSpinner := make(chan struct{})
+	spinner := ui.NewSpinner("Scanning codebase...")
 	if !silentSpinner {
 		fmt.Println()
 		fmt.Printf("🔍 Scanning for environment variables: %s\n\n", color.YellowString(root))
-
-		go func() {
-			spinChars := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-			i := 0
-			for {
-				select {
-				case <-stopSpinner:
-					fmt.Print("\r\033[2K\r")
-					return
-				case <-time.After(80 * time.Millisecond):
-					count := atomic.LoadInt64(&filesScanned)
-					fmt.Printf("\r\033[2K  %s Scanning codebase... (%d files checked)", color.CyanString(spinChars[i%len(spinChars)]), count)
-					i++
-				}
-			}
-		}()
+		spinner.Start()
 	}
-
-	skips := append(defaultEnvSkips, customSkips...)
 
 	sem <- struct{}{}
 	wg.Add(1)
 	go func() {
 		defer func() { <-sem }()
 		defer wg.Done()
-		scanEnvDir(root, detectedVars, &mu, &wg, sem, skips, &filesScanned)
+		scanEnvDir(root, detectedVars, &mu, &wg, sem, customSkips, spinner)
 	}()
 	wg.Wait()
 
 	if !silentSpinner {
-		close(stopSpinner)
-		time.Sleep(30 * time.Millisecond)
-		fmt.Print("\r\033[2K\r")
+		spinner.Stop()
 	}
 
 	var missingList []MissingEnvReportItem
@@ -238,12 +197,12 @@ func parseLocalEnv(root, envFileName string) (string, map[string]bool, bool) {
 	foundEnv := make(map[string]bool)
 
 	targetFile := filepath.Join(root, envFileName)
-	if _, err := os.Stat(targetFile); err != nil {
+	if !fsutil.FileExists(targetFile) {
 		fallbacks := []string{".env", ".env.local", ".env.development", ".env.example"}
 		foundFallback := false
 		for _, fb := range fallbacks {
 			candidate := filepath.Join(root, fb)
-			if _, err := os.Stat(candidate); err == nil {
+			if fsutil.FileExists(candidate) {
 				targetFile = candidate
 				foundFallback = true
 				break
@@ -281,7 +240,7 @@ func parseLocalEnv(root, envFileName string) (string, map[string]bool, bool) {
 	return targetFile, foundEnv, true
 }
 
-func scanEnvDir(currentDir string, detectedVars map[string][]EnvUsageOccurrence, mu *sync.Mutex, wg *sync.WaitGroup, sem chan struct{}, skips []string, scannedCount *int64) {
+func scanEnvDir(currentDir string, detectedVars map[string][]EnvUsageOccurrence, mu *sync.Mutex, wg *sync.WaitGroup, sem chan struct{}, skips []string, spinner *ui.Spinner) {
 	entries, err := os.ReadDir(currentDir)
 	if err != nil {
 		return
@@ -289,7 +248,7 @@ func scanEnvDir(currentDir string, detectedVars map[string][]EnvUsageOccurrence,
 
 	for _, entry := range entries {
 		name := entry.Name()
-		if isEnvSkipped(name, skips) {
+		if strings.HasPrefix(name, ".env") || fsutil.ShouldSkip(name, skips) {
 			continue
 		}
 
@@ -302,14 +261,14 @@ func scanEnvDir(currentDir string, detectedVars map[string][]EnvUsageOccurrence,
 				go func(p string) {
 					defer func() { <-sem }()
 					defer wg.Done()
-					scanEnvDir(p, detectedVars, mu, wg, sem, skips, scannedCount)
+					scanEnvDir(p, detectedVars, mu, wg, sem, skips, spinner)
 				}(fullPath)
 			default:
-				scanEnvDir(fullPath, detectedVars, mu, wg, sem, skips, scannedCount)
+				scanEnvDir(fullPath, detectedVars, mu, wg, sem, skips, spinner)
 			}
 		} else {
-			if isCandidateCodeFile(name, fullPath) {
-				atomic.AddInt64(scannedCount, 1)
+			if fsutil.IsCandidateCodeFile(name, fullPath) {
+				spinner.Increment()
 				select {
 				case sem <- struct{}{}:
 					wg.Add(1)
@@ -324,65 +283,6 @@ func scanEnvDir(currentDir string, detectedVars map[string][]EnvUsageOccurrence,
 			}
 		}
 	}
-}
-
-func isEnvSkipped(name string, skips []string) bool {
-	if strings.HasPrefix(name, ".env") {
-		return true
-	}
-	for _, s := range skips {
-		if s == name {
-			return true
-		}
-	}
-	return false
-}
-
-func isCandidateCodeFile(name, path string) bool {
-	lower := strings.ToLower(name)
-	if strings.HasSuffix(lower, ".min.js") || strings.HasSuffix(lower, ".min.css") || strings.HasSuffix(lower, ".map") {
-		return false
-	}
-
-	ext := strings.ToLower(filepath.Ext(name))
-	validExts := map[string]bool{
-		".js": true, ".jsx": true, ".ts": true, ".tsx": true, ".mjs": true, ".cjs": true,
-		".go": true,
-		".py": true,
-		".rs": true,
-		".java": true, ".kt": true,
-		".php": true,
-		".rb":  true,
-	}
-
-	if !validExts[ext] {
-		return false
-	}
-
-	info, err := os.Stat(path)
-	if err != nil || info.Size() > 2*1024*1024 {
-		return false
-	}
-
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-
-	buf := make([]byte, 512)
-	n, err := f.Read(buf)
-	if err != nil && err != io.EOF {
-		return false
-	}
-
-	for i := 0; i < n; i++ {
-		if buf[i] == 0 {
-			return false
-		}
-	}
-
-	return true
 }
 
 func scanEnvFile(filePath string, detectedVars map[string][]EnvUsageOccurrence, mu *sync.Mutex) {
@@ -463,9 +363,9 @@ func isEnvVarEligible(k string) bool {
 }
 
 func renderEnvAuditBox(report EnvAuditReport) {
-	color.Cyan("╭─────────────────────────────────────────────────────────────╮")
-	color.Cyan("│               ENVIRONMENT VARIABLES AUDIT                   │")
-	color.Cyan("├───────────────────────┬─────────────────────────────────────┤")
+	ui.PrintBoxTop()
+	fmt.Printf(color.CyanString("│")+" %-59s "+color.CyanString("│\n"), color.HiWhiteString("ENVIRONMENT VARIABLES AUDIT"))
+	ui.PrintBoxDivider2ColWide()
 
 	envLabel := filepath.Base(report.EnvFile)
 	if !report.EnvFileFound {
@@ -476,12 +376,8 @@ func renderEnvAuditBox(report EnvAuditReport) {
 		fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Environment File", color.HiYellowString(envStatus))
 	}
 
-	targetDir := report.TargetDirectory
-	if len(targetDir) > 35 {
-		targetDir = "..." + targetDir[len(targetDir)-32:]
-	}
+	targetDir := ui.Truncate(report.TargetDirectory, 35)
 	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Target Directory", color.HiWhiteString(targetDir))
-
 	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Code References", color.HiWhiteString("%d variables detected", report.DetectedCount))
 
 	if report.MissingCount > 0 {
@@ -494,7 +390,7 @@ func renderEnvAuditBox(report EnvAuditReport) {
 		fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-35s "+color.CyanString("│\n"), "Audit Status", color.HiGreenString("✅ All Synced"))
 	}
 
-	color.Cyan("╰───────────────────────┴─────────────────────────────────────╯")
+	ui.PrintBoxBottom()
 }
 
 func fixMissingEnvVars(envPath string, missing []MissingEnvReportItem) {

@@ -4,16 +4,14 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
-	"sync/atomic"
-	"time"
 
+	"github.com/V3DxNT/Ray/internal/fsutil"
+	"github.com/V3DxNT/Ray/internal/ui"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -96,37 +94,6 @@ var (
 	auditEnv         bool
 )
 
-var defaultAuditSkips = []string{
-	".git",
-	"node_modules",
-	"build",
-	"dist",
-	".next",
-	".nuxt",
-	".turbo",
-	".cache",
-	"vendor",
-	"__pycache__",
-	".venv",
-	"venv",
-	".gradle",
-	"Pods",
-	".idea",
-	".vscode",
-	".terraform",
-}
-
-var skipFileNames = map[string]bool{
-	"go.sum":            true,
-	"package-lock.json": true,
-	"yarn.lock":         true,
-	"pnpm-lock.yaml":    true,
-	"Cargo.lock":        true,
-	"composer.lock":     true,
-	"poetry.lock":       true,
-	"flake.lock":        true,
-}
-
 var auditCmd = &cobra.Command{
 	Use:   "audit [path]",
 	Short: "Scan codebase for exposed secrets, standard repository files, and syntax metrics",
@@ -163,13 +130,8 @@ func runAudit(cmd *cobra.Command, args []string) {
 	}
 
 	info, err := os.Stat(absPath)
-	if err != nil {
-		color.Red("Path does not exist: %v", err)
-		return
-	}
-
-	if !info.IsDir() {
-		color.Red("Target path must be a directory")
+	if err != nil || !info.IsDir() {
+		color.Red("Target path must be an existing directory")
 		return
 	}
 
@@ -179,28 +141,12 @@ func runAudit(cmd *cobra.Command, args []string) {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 64)
-	var filesScanned int64
 
-	stopSpinner := make(chan struct{})
+	spinner := ui.NewSpinner("Auditing codebase...")
 	if !auditJson {
 		fmt.Println()
 		fmt.Printf("🔍 Auditing: %s\n\n", color.YellowString(absPath))
-
-		go func() {
-			spinChars := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-			i := 0
-			for {
-				select {
-				case <-stopSpinner:
-					fmt.Print("\r\033[2K\r")
-					return
-				case <-time.After(80 * time.Millisecond):
-					count := atomic.LoadInt64(&filesScanned)
-					fmt.Printf("\r\033[2K  %s Auditing codebase... (%d files scanned)", color.CyanString(spinChars[i%len(spinChars)]), count)
-					i++
-				}
-			}
-		}()
+		spinner.Start()
 	}
 
 	sem <- struct{}{}
@@ -208,14 +154,12 @@ func runAudit(cmd *cobra.Command, args []string) {
 	go func() {
 		defer func() { <-sem }()
 		defer wg.Done()
-		scanAuditDir(absPath, &findings, &metrics, &mu, &wg, sem, auditSkipDirs, &filesScanned)
+		scanAuditDir(absPath, &findings, &metrics, &mu, &wg, sem, auditSkipDirs, spinner)
 	}()
 	wg.Wait()
 
 	if !auditJson {
-		close(stopSpinner)
-		time.Sleep(30 * time.Millisecond)
-		fmt.Print("\r\033[2K\r")
+		spinner.Stop()
 	}
 
 	standardFiles := checkStandardRepositoryFiles(absPath)
@@ -320,11 +264,11 @@ func checkStandardRepositoryFiles(root string) []StandardFileStatus {
 }
 
 func renderStandardFilesBox(files []StandardFileStatus) {
-	color.Cyan("╭─────────────────────────────────────────────────────────────╮")
-	color.Cyan("│                  STANDARD REPOSITORY FILES                  │")
-	color.Cyan("├───────────────────────┬──────────┬──────────────────────────┤")
+	ui.PrintBoxTop()
+	fmt.Printf(color.CyanString("│")+" %-59s "+color.CyanString("│\n"), color.HiWhiteString("STANDARD REPOSITORY FILES"))
+	ui.PrintBoxDivider3Col()
 	fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+" %-8s "+color.CyanString("│")+" %-24s "+color.CyanString("│\n"), "Standard File", "Status", "Details")
-	color.Cyan("├───────────────────────┼──────────┼──────────────────────────┤")
+	ui.PrintBoxDivider3Col()
 
 	for _, f := range files {
 		statusStr := color.GreenString("  ✅    ")
@@ -339,65 +283,67 @@ func renderStandardFilesBox(files []StandardFileStatus) {
 		}
 		fmt.Printf(color.CyanString("│")+" %-21s "+color.CyanString("│")+"%s"+color.CyanString("│")+" %-33s "+color.CyanString("│\n"), f.Name, statusStr, detailStr)
 	}
-	color.Cyan("╰───────────────────────┴──────────┴──────────────────────────╯\n")
+	ui.PrintBoxBottom()
+	fmt.Println()
 }
 
 func renderMetricsBox(m CodeMetrics) {
-	color.Cyan("╭─────────────────────────────────────────────────────────────╮")
-	color.Cyan("│              CODEBASE STRUCTURE & SYNTAX METRICS            │")
-	color.Cyan("├──────────────────────────────┬──────────────────────────────┤")
+	ui.PrintBoxTop()
+	fmt.Printf(color.CyanString("│")+" %-59s "+color.CyanString("│\n"), color.HiWhiteString("CODEBASE STRUCTURE & SYNTAX METRICS"))
+	ui.PrintBoxDivider2Col()
 	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-28s "+color.CyanString("│\n"), "Metric Category", "Scanned Quantity")
-	color.Cyan("├──────────────────────────────┼──────────────────────────────┤")
+	ui.PrintBoxDivider2Col()
 
-	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-28s "+color.CyanString("│\n"), "Total Source Files", color.HiYellowString("%d", m.TotalFiles))
-	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-28s "+color.CyanString("│\n"), "Total Lines of Code (LOC)", color.HiWhiteString("%d", m.TotalLines))
+	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), "Total Source Files", color.HiYellowString("%d", m.TotalFiles))
+	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), "Total Lines of Code (LOC)", color.HiYellowString("%d", m.TotalLines))
 
-	var codePct, commentPct, blankPct float64
+	codePct := 0.0
+	commentPct := 0.0
+	blankPct := 0.0
 	if m.TotalLines > 0 {
 		codePct = (float64(m.CodeLines) / float64(m.TotalLines)) * 100
 		commentPct = (float64(m.CommentLines) / float64(m.TotalLines)) * 100
 		blankPct = (float64(m.BlankLines) / float64(m.TotalLines)) * 100
 	}
-
-	fmt.Printf(color.CyanString("│")+"   ├── Executable Code Lines   "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.GreenString("%d (%.1f%%)", m.CodeLines, codePct))
+	fmt.Printf(color.CyanString("│")+"   ├── Executable Code Lines   "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.HiWhiteString("%d (%.1f%%)", m.CodeLines, codePct))
 	fmt.Printf(color.CyanString("│")+"   ├── Comment Lines           "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.HiBlackString("%d (%.1f%%)", m.CommentLines, commentPct))
 	fmt.Printf(color.CyanString("│")+"   └── Blank Lines             "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.HiBlackString("%d (%.1f%%)", m.BlankLines, blankPct))
 
-	color.Cyan("├──────────────────────────────┼──────────────────────────────┤")
-	fmt.Printf(color.CyanString("│")+" Functions & Methods           "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.HiGreenString("%d", m.Functions))
-	fmt.Printf(color.CyanString("│")+" Classes & Components          "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.HiCyanString("%d", m.Classes))
-	fmt.Printf(color.CyanString("│")+" Structs & Records             "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.HiYellowString("%d", m.Structs))
-	fmt.Printf(color.CyanString("│")+" Interfaces & Protocols        "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.HiMagentaString("%d", m.Interfaces))
-	fmt.Printf(color.CyanString("│")+" Constants & Enums             "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.HiGreenString("%d", m.Constants))
-	fmt.Printf(color.CyanString("│")+" Types & Type Aliases          "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.HiCyanString("%d", m.Types))
-	fmt.Printf(color.CyanString("│")+" Imports & External Modules    "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.HiYellowString("%d", m.Imports))
-	fmt.Printf(color.CyanString("│")+" Decorators & Annotations      "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.HiMagentaString("%d", m.Decorators))
-	fmt.Printf(color.CyanString("│")+" Async / Coroutine Routines    "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.HiGreenString("%d", m.Async))
+	ui.PrintBoxDivider2Col()
+	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), "Functions & Methods", color.HiWhiteString("%d", m.Functions))
+	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), "Classes & Components", color.HiWhiteString("%d", m.Classes))
+	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), "Structs & Records", color.HiWhiteString("%d", m.Structs))
+	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), "Interfaces & Protocols", color.HiWhiteString("%d", m.Interfaces))
+	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), "Constants & Enums", color.HiWhiteString("%d", m.Constants))
+	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), "Types & Type Aliases", color.HiWhiteString("%d", m.Types))
+	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), "Imports & External Modules", color.HiWhiteString("%d", m.Imports))
+	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), "Decorators & Annotations", color.HiWhiteString("%d", m.Decorators))
+	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), "Async / Coroutine Routines", color.HiWhiteString("%d", m.Async))
 
-	color.Cyan("├──────────────────────────────┼──────────────────────────────┤")
-	avgLoc := 0.0
+	ui.PrintBoxDivider2Col()
+	avgFuncLen := 0.0
 	if m.Functions > 0 {
-		avgLoc = float64(m.CodeLines) / float64(m.Functions)
+		avgFuncLen = float64(m.CodeLines) / float64(m.Functions)
 	}
-	ratio := 0.0
+	ratioStr := "0.0 : 1"
 	if m.CommentLines > 0 {
-		ratio = float64(m.CodeLines) / float64(m.CommentLines)
+		ratioStr = fmt.Sprintf("%.1f : 1", float64(m.CodeLines)/float64(m.CommentLines))
 	}
-
-	fmt.Printf(color.CyanString("│")+" Avg Lines Per Function        "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.HiWhiteString("%.1f lines", avgLoc))
-	fmt.Printf(color.CyanString("│")+" Code-to-Comment Ratio         "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), color.HiWhiteString("%.1f : 1", ratio))
-
-	color.Cyan("╰──────────────────────────────┴──────────────────────────────╯\n")
+	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), "Avg Lines Per Function", color.HiWhiteString("%.1f lines", avgFuncLen))
+	fmt.Printf(color.CyanString("│")+" %-28s "+color.CyanString("│")+" %-37s "+color.CyanString("│\n"), "Code-to-Comment Ratio", color.HiWhiteString(ratioStr))
+	ui.PrintBoxBottom()
+	fmt.Println()
 }
 
 func renderSecretsBox(findings []SecretFinding) {
-	color.Cyan("╭─────────────────────────────────────────────────────────────╮")
-	color.Cyan("│                 SECURITY AUDIT & SECRET LEAKS               │")
-	color.Cyan("├─────────────────────────────────────────────────────────────┤")
+	ui.PrintBoxTop()
+	fmt.Printf(color.CyanString("│")+" %-59s "+color.CyanString("│\n"), color.HiWhiteString("SECURITY AUDIT & SECRET LEAKS"))
+	ui.PrintBoxDivider()
 
 	if len(findings) == 0 {
-		fmt.Printf(color.CyanString("│")+" %-69s "+color.CyanString("│\n"), color.GreenString("🔒 Clean Repository! No exposed credentials or secrets found."))
-		color.Cyan("╰─────────────────────────────────────────────────────────────╯\n")
+		fmt.Printf(color.CyanString("│")+" %-69s "+color.CyanString("│\n"), color.HiGreenString("🔒 Clean Repository! No exposed credentials or secrets found."))
+		ui.PrintBoxBottom()
+		fmt.Println()
 		return
 	}
 
@@ -416,10 +362,11 @@ func renderSecretsBox(findings []SecretFinding) {
 		}
 	}
 
-	color.Cyan("╰─────────────────────────────────────────────────────────────╯\n")
+	ui.PrintBoxBottom()
+	fmt.Println()
 }
 
-func scanAuditDir(currentDir string, findings *[]SecretFinding, metrics *CodeMetrics, mu *sync.Mutex, wg *sync.WaitGroup, sem chan struct{}, skips []string, scannedCount *int64) {
+func scanAuditDir(currentDir string, findings *[]SecretFinding, metrics *CodeMetrics, mu *sync.Mutex, wg *sync.WaitGroup, sem chan struct{}, skips []string, spinner *ui.Spinner) {
 	entries, err := os.ReadDir(currentDir)
 	if err != nil {
 		return
@@ -427,7 +374,7 @@ func scanAuditDir(currentDir string, findings *[]SecretFinding, metrics *CodeMet
 
 	for _, entry := range entries {
 		name := entry.Name()
-		if isAuditSkipped(name, skips) {
+		if fsutil.ShouldSkip(name, skips) {
 			continue
 		}
 
@@ -440,14 +387,14 @@ func scanAuditDir(currentDir string, findings *[]SecretFinding, metrics *CodeMet
 				go func(p string) {
 					defer func() { <-sem }()
 					defer wg.Done()
-					scanAuditDir(p, findings, metrics, mu, wg, sem, skips, scannedCount)
+					scanAuditDir(p, findings, metrics, mu, wg, sem, skips, spinner)
 				}(fullPath)
 			default:
-				scanAuditDir(fullPath, findings, metrics, mu, wg, sem, skips, scannedCount)
+				scanAuditDir(fullPath, findings, metrics, mu, wg, sem, skips, spinner)
 			}
 		} else {
-			if isCandidateTextFile(name, fullPath) {
-				atomic.AddInt64(scannedCount, 1)
+			if fsutil.IsCandidateTextFile(name, fullPath) {
+				spinner.Increment()
 				select {
 				case sem <- struct{}{}:
 					wg.Add(1)
@@ -462,78 +409,6 @@ func scanAuditDir(currentDir string, findings *[]SecretFinding, metrics *CodeMet
 			}
 		}
 	}
-}
-
-func isAuditSkipped(name string, skips []string) bool {
-	if skipFileNames[name] {
-		return true
-	}
-	for _, s := range defaultAuditSkips {
-		if s == name {
-			return true
-		}
-	}
-	for _, s := range skips {
-		if s == name {
-			return true
-		}
-	}
-	return false
-}
-
-func isCandidateTextFile(name, path string) bool {
-	if skipFileNames[name] {
-		return false
-	}
-
-	lower := strings.ToLower(name)
-	if strings.HasSuffix(lower, ".min.js") || strings.HasSuffix(lower, ".min.css") || strings.HasSuffix(lower, ".map") {
-		return false
-	}
-
-	ext := strings.ToLower(filepath.Ext(name))
-	binaryExts := map[string]bool{
-		".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".ico": true,
-		".svg": true, ".pdf": true, ".zip": true, ".tar": true, ".gz": true,
-		".exe": true, ".bin": true, ".iso": true, ".dll": true, ".so": true,
-		".dylib": true, ".woff": true, ".woff2": true, ".ttf": true, ".eot": true,
-		".mp4": true, ".mp3": true, ".wav": true, ".db": true, ".sqlite": true,
-		".wasm": true,
-	}
-
-	if binaryExts[ext] {
-		return false
-	}
-
-	info, err := os.Stat(path)
-	if err != nil || info.Size() > 2*1024*1024 {
-		return false
-	}
-
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-
-	buf := make([]byte, 512)
-	n, err := f.Read(buf)
-	if err != nil && err != io.EOF {
-		return false
-	}
-
-	for i := 0; i < n; i++ {
-		if buf[i] == 0 {
-			return false
-		}
-	}
-
-	contentType := http.DetectContentType(buf[:n])
-	if strings.HasPrefix(contentType, "text/") || strings.Contains(contentType, "json") || strings.Contains(contentType, "xml") || strings.Contains(contentType, "javascript") {
-		return true
-	}
-
-	return true
 }
 
 func auditFile(path string, findings *[]SecretFinding, metrics *CodeMetrics, mu *sync.Mutex) {
